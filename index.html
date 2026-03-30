@@ -472,8 +472,6 @@ let isRunning = false;
 let lastColData = null;
 let lastChain = '';
 let lastContract = '';
-let lastThresholds = [];
-let lastPoints = [];
 let currentTierMode = 'standard'; // 'standard' or 'custom'
 let activeTiers = []; // unified tier array used during rendering: [{name, color, threshold, points}, ...]
 let displayCount = 50;
@@ -738,6 +736,7 @@ async function apiGet(url, apiKey, retries = 3) {
     }
     return res.json();
   }
+  throw new Error('API rate limited (429) after all retries.');
 }
 function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
 
@@ -829,9 +828,6 @@ async function analyze() {
     points = custom.map(t => t.points);
     activeTiers = custom;
   }
-  lastThresholds = thresholds;
-  lastPoints = points;
-
   isRunning = true;
   const btn = document.getElementById('analyzeBtn');
   btn.disabled = true;
@@ -909,7 +905,6 @@ async function analyze() {
 
     let items = [];
     if (currentMode === 'listed') {
-      setProgress(70, 'Fetching active listings...');
       items = await fetchListedItems(slug, chain, contractAddress, apiKey);
     } else {
       setProgress(15, 'Fetching all items...');
@@ -1351,7 +1346,7 @@ function renderCards(items, totalSupply, chain, contractAddress, minScore, maxSc
         <div class="traits-label">Main Traits</div>
         <div class="traits-grid">
           ${item.mainTraits.length === 0 ? '<span style="color:var(--text-muted); font-size:0.8rem;">No traits available</span>' : ''}
-          ${item.mainTraits.sort((a, b) => b.points - a.points || a.pct - b.pct).map(t => `
+          ${[...item.mainTraits].sort((a, b) => b.points - a.points || a.pct - b.pct).map(t => `
             <div class="trait-tag" style="${traitTagStyle(t.tier)}">
               <span class="trait-type">${escapeHtml(t.type)}</span>
               <span class="trait-value">${escapeHtml(t.value)}</span>
@@ -1363,7 +1358,7 @@ function renderCards(items, totalSupply, chain, contractAddress, minScore, maxSc
       <div class="special-traits">
         <button class="special-toggle" onclick="toggleSpecial(this)">&#9656; Show ${item.specialTraits.length} Scoring Special Traits</button>
         <div class="special-content">
-          ${item.specialTraits.sort((a, b) => b.points - a.points || a.pct - b.pct).map(t => `
+          ${[...item.specialTraits].sort((a, b) => b.points - a.points || a.pct - b.pct).map(t => `
             <div class="trait-tag" style="${traitTagStyle(t.tier)}">
               <span class="trait-type">${escapeHtml(t.type.replace(/^_/, ''))}</span>
               <span class="trait-value">${escapeHtml(t.value)}</span>
@@ -1410,7 +1405,7 @@ function renderTable(items, totalSupply, chain, contractAddress, minScore, maxSc
       <tr class="expand-row" id="expand-${escapeHtml(item.tokenId)}">
         <td colspan="10" class="expand-cell">
           <div class="traits-grid">
-            ${item.mainTraits.sort((a, b) => b.points - a.points || a.pct - b.pct).map(t => `
+            ${[...item.mainTraits].sort((a, b) => b.points - a.points || a.pct - b.pct).map(t => `
               <div class="trait-tag" style="${traitTagStyle(t.tier)}">
                 <span class="trait-type">${escapeHtml(t.type)}</span>
                 <span class="trait-value">${escapeHtml(t.value)}</span>
