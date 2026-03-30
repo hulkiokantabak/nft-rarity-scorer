@@ -211,6 +211,9 @@
   .special-content { display: none; margin-top: 5px; }
   .special-content.open { display: flex; flex-wrap: wrap; gap: 4px; }
 
+  .item-owner { font-size: 0.78rem; color: var(--text-muted); margin-top: 2px; }
+  .item-owner a { color: var(--accent); text-decoration: none; }
+  .item-owner a:hover { text-decoration: underline; }
   .opensea-link { display: inline-block; margin-top: 5px; font-size: 0.75rem; color: var(--accent); text-decoration: none; }
   .opensea-link:hover { text-decoration: underline; }
 
@@ -352,6 +355,7 @@
     <button class="sort-btn" data-sort="value" onclick="sortResults('value')">Value</button>
     <button class="sort-btn" data-sort="price" onclick="sortResults('price')">Price</button>
     <button class="sort-btn" data-sort="rarity" onclick="sortResults('rarity')">OS Rarity</button>
+    <button class="sort-btn" data-sort="owner" onclick="sortResults('owner')">Owner</button>
     <button class="sort-btn" data-sort="toggle" onclick="toggleSortDir()">&#8597;</button>
     <div class="view-toggle">
       <button class="view-btn active" data-view="cards" onclick="setView('cards')">Cards</button>
@@ -723,10 +727,12 @@ async function fetchListedItems(slug, chain, contractAddress, apiKey) {
       try {
         const data = await apiGet(`https://api.opensea.io/api/v2/chain/${chain}/contract/${contractAddress}/nfts/${tokenId}`, apiKey);
         const nft = data.nft || {};
+        const owners = nft.owners || [];
         return {
           tokenId, name: nft.name || `#${tokenId}`,
           price: tokenMap[tokenId].price, currency: tokenMap[tokenId].currency,
           rarity: nft.rarity,
+          owner: owners[0]?.address || null,
           traits: (nft.traits || []).map(t => ({ type: t.trait_type, value: String(t.value) }))
         };
       } catch (e) { console.warn(`Failed to fetch token ${tokenId}:`, e.message); return null; }
@@ -750,6 +756,7 @@ async function fetchAllItems(slug, apiKey, totalSupply) {
     items = items.concat((data.nfts || []).map(nft => ({
       tokenId: nft.identifier, name: nft.name || `#${nft.identifier}`,
       price: null, currency: null, rarity: nft.rarity,
+      owner: (nft.owners || [])[0]?.address || null,
       traits: (nft.traits || []).map(t => ({ type: t.trait_type, value: String(t.value) }))
     })));
     next = data.next || null;
@@ -777,7 +784,7 @@ function scoreItem(item, traitCounts, totalSupply, thresholds, points) {
   }
   return {
     tokenId: item.tokenId, name: item.name, price: item.price, currency: item.currency || 'ETH',
-    rarityRank: item.rarity?.rank, totalSupply, totalScore,
+    rarityRank: item.rarity?.rank, totalSupply, totalScore, owner: item.owner,
     orangeCount: traitScores.filter(t => t.tier === 'orange').length,
     purpleCount: traitScores.filter(t => t.tier === 'purple').length,
     blueCount: traitScores.filter(t => t.tier === 'blue').length,
@@ -804,7 +811,7 @@ function renderResults(items, totalSupply, slug, chain, contractAddress, thresho
 function renderCards(items, totalSupply, chain, contractAddress, points, minScore, maxScore) {
   const grid = document.getElementById('resultsGrid');
   grid.innerHTML = items.map((item, idx) => `
-    <div class="item-card${item.isBargain ? ' bargain' : ''}" data-score="${item.totalScore}" data-price="${item.price != null ? item.price : 999999}" data-rarity="${item.rarityRank || 9999}" data-value="${item.valueScore || 0}">
+    <div class="item-card${item.isBargain ? ' bargain' : ''}" data-score="${item.totalScore}" data-price="${item.price != null ? item.price : 999999}" data-rarity="${item.rarityRank || 9999}" data-value="${item.valueScore || 0}" data-owner="${escapeHtml(item.owner || '')}">
       <div class="item-header">
         <div>
           <div class="item-name"><span class="item-idx">#${idx + 1}</span> ${escapeHtml(item.name)}</div>
@@ -813,6 +820,7 @@ function renderCards(items, totalSupply, chain, contractAddress, points, minScor
           </div>
           <div class="item-rank">OS Rarity: ${item.rarityRank || 'N/A'} / ${totalSupply}</div>
           <div class="item-price">${item.price != null ? `<span class="eth">${formatPrice(item.price)} ${item.currency}</span>` : '<span style="color:var(--text-muted)">Not listed</span>'}</div>
+          ${item.owner ? `<div class="item-owner">Owner: <a href="https://opensea.io/${item.owner}" target="_blank" rel="noopener">${item.owner.slice(0,6)}...${item.owner.slice(-4)}</a></div>` : ''}
           ${item.valueScore != null ? `<div class="value-ratio">Value: ${item.valueScore} pts/ETH</div>` : ''}
         </div>
         <div class="item-score" style="color:${item.scoreColor}">
@@ -862,18 +870,20 @@ function renderTable(items, totalSupply, chain, contractAddress, minScore, maxSc
       <th onclick="sortResults('value')">Value</th>
       <th onclick="sortResults('price')">Price</th>
       <th>Name</th>
+      <th onclick="sortResults('owner')">Owner</th>
       <th onclick="sortResults('rarity')">OS Rank</th>
       <th>Tiers</th>
       <th></th>
     </tr></thead>
     <tbody>
     ${items.map((item, idx) => `
-      <tr class="expandable${item.isBargain ? ' bargain-row' : ''}" data-score="${item.totalScore}" data-price="${item.price != null ? item.price : 999999}" data-rarity="${item.rarityRank || 9999}" data-value="${item.valueScore || 0}" onclick="toggleTableRow(this)">
+      <tr class="expandable${item.isBargain ? ' bargain-row' : ''}" data-score="${item.totalScore}" data-price="${item.price != null ? item.price : 999999}" data-rarity="${item.rarityRank || 9999}" data-value="${item.valueScore || 0}" data-owner="${escapeHtml(item.owner || '')}" onclick="toggleTableRow(this)">
         <td><span class="tbl-idx">${idx + 1}</span></td>
         <td class="score-cell" style="color:${item.scoreColor}">${item.totalScore}</td>
         <td>${item.valueScore != null ? item.valueScore : '—'}</td>
         <td class="price-cell">${item.price != null ? formatPrice(item.price) + ' ' + item.currency : '—'}</td>
         <td>${escapeHtml(item.name)}${item.isBargain ? ' <span class="badge badge-bargain">Value</span>' : ''}</td>
+        <td>${item.owner ? `<a href="https://opensea.io/${item.owner}" target="_blank" rel="noopener" onclick="event.stopPropagation()">${item.owner.slice(0,6)}...${item.owner.slice(-4)}</a>` : '—'}</td>
         <td>${item.rarityRank || 'N/A'}</td>
         <td><div class="tier-dots">
           <span style="color:var(--orange)">${item.orangeCount}</span>/<span style="color:var(--purple)">${item.purpleCount}</span>/<span style="color:var(--blue)">${item.blueCount}</span>
@@ -881,7 +891,7 @@ function renderTable(items, totalSupply, chain, contractAddress, minScore, maxSc
         <td><a href="https://opensea.io/assets/${chain}/${contractAddress}/${item.tokenId}" target="_blank" rel="noopener" onclick="event.stopPropagation()">&#8599;</a></td>
       </tr>
       <tr class="expand-row" id="expand-${item.tokenId}">
-        <td colspan="8" class="expand-cell">
+        <td colspan="9" class="expand-cell">
           <div class="traits-grid">
             ${item.mainTraits.sort((a, b) => b.points - a.points || a.pct - b.pct).map(t => `
               <div class="trait-tag trait-${t.tier}">
@@ -911,7 +921,7 @@ function toggleTableRow(row) {
 // ─── Sorting ───
 function sortResults(field) {
   if (field === currentSort) currentSortDir = currentSortDir === 'desc' ? 'asc' : 'desc';
-  else { currentSort = field; currentSortDir = field === 'rarity' ? 'asc' : 'desc'; }
+  else { currentSort = field; currentSortDir = (field === 'rarity' || field === 'owner') ? 'asc' : 'desc'; }
   document.querySelectorAll('.sort-btn[data-sort]').forEach(b => {
     if (b.dataset.sort !== 'toggle') b.classList.toggle('active', b.dataset.sort === field);
   });
@@ -945,6 +955,12 @@ function applySorting() {
 
 function makeSortFn(field, dir) {
   return (a, b) => {
+    if (field === 'owner') {
+      const va = (a.owner || '').toLowerCase();
+      const vb = (b.owner || '').toLowerCase();
+      const cmp = va.localeCompare(vb);
+      return dir === 'desc' ? -cmp : cmp;
+    }
     let va, vb;
     switch (field) {
       case 'score': va = +a.score; vb = +b.score; break;
@@ -960,11 +976,11 @@ function makeSortFn(field, dir) {
 // ─── CSV Export ───
 function exportCSV() {
   if (scoredItems.length === 0) return;
-  const headers = ['Rank', 'Name', 'Token ID', 'Score', 'Value (pts/ETH)', 'Price', 'Currency', 'OS Rarity Rank', 'Orange Traits', 'Purple Traits', 'Blue Traits', 'Is Bargain', 'OpenSea URL'];
+  const headers = ['Rank', 'Name', 'Token ID', 'Score', 'Value (pts/ETH)', 'Price', 'Currency', 'Owner', 'OS Rarity Rank', 'Orange Traits', 'Purple Traits', 'Blue Traits', 'Is Bargain', 'OpenSea URL'];
   const rows = scoredItems.map((item, idx) => [
     idx + 1, `"${item.name}"`, item.tokenId, item.totalScore,
     item.valueScore ?? '', item.price != null ? formatPrice(item.price) : '',
-    item.currency, item.rarityRank || '', item.orangeCount, item.purpleCount, item.blueCount,
+    item.currency, item.owner || '', item.rarityRank || '', item.orangeCount, item.purpleCount, item.blueCount,
     item.isBargain ? 'Yes' : '', `https://opensea.io/assets/${lastChain}/${lastContract}/${item.tokenId}`
   ]);
   const csv = [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
