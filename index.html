@@ -210,6 +210,8 @@
   .item-card.bargain { border-color: var(--bargain-border); background: var(--bargain-bg); }
   .item-card.bargain::before { content: ''; }
   .item-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 8px; flex-wrap: wrap; gap: 8px; }
+  .item-thumb { width: 52px; height: 52px; border-radius: 6px; object-fit: cover; flex-shrink: 0; background: var(--bg); }
+  .item-header-left { display: flex; gap: 10px; align-items: flex-start; flex: 1; min-width: 0; }
   .item-name { font-size: 1rem; font-weight: 700; }
   .item-badges { display: flex; gap: 6px; margin-top: 2px; }
   .badge { font-size: 0.65rem; padding: 2px 8px; border-radius: 10px; font-weight: 600; }
@@ -259,6 +261,7 @@
   .results-table .tier-dots { display: flex; gap: 4px; }
   .results-table .tier-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
   .results-table .bargain-row td { background: var(--bargain-bg); }
+  .results-table .tbl-thumb { width: 32px; height: 32px; border-radius: 4px; object-fit: cover; vertical-align: middle; background: var(--bg); }
   .results-table a { color: var(--accent); text-decoration: none; }
   .results-table a:hover { text-decoration: underline; }
   .results-table .expandable { cursor: pointer; }
@@ -885,6 +888,7 @@ async function fetchListedItems(slug, chain, contractAddress, apiKey) {
         const owners = nft.owners || [];
         return {
           tokenId, name: nft.name || `#${tokenId}`,
+          image: nft.image_url || null,
           price: tokenMap[tokenId].price, currency: tokenMap[tokenId].currency,
           rarity: nft.rarity,
           owner: owners[0]?.address || null,
@@ -910,6 +914,7 @@ async function fetchAllItems(slug, apiKey, totalSupply) {
     const data = await apiGet(url, apiKey);
     items = items.concat((data.nfts || []).map(nft => ({
       tokenId: nft.identifier, name: nft.name || `#${nft.identifier}`,
+      image: nft.image_url || null,
       price: null, currency: null, rarity: nft.rarity,
       owner: (nft.owners || [])[0]?.address || null,
       traits: (nft.traits || []).map(t => ({ type: t.trait_type, value: String(t.value) }))
@@ -945,7 +950,7 @@ function scoreItem(item, traitCounts, totalSupply, thresholds, points) {
   activeTiers.forEach(t => tierCounts[t.name] = 0);
   traitScores.forEach(t => { if (tierCounts[t.tier] !== undefined) tierCounts[t.tier]++; });
   return {
-    tokenId: item.tokenId, name: item.name, price: item.price, currency: item.currency || 'ETH',
+    tokenId: item.tokenId, name: item.name, image: item.image, price: item.price, currency: item.currency || 'ETH',
     rarityRank: item.rarity?.rank, totalSupply, totalScore, owner: item.owner,
     tierCounts,
     mainTraits: traitScores.filter(t => !t.type.startsWith('_')),
@@ -973,7 +978,9 @@ function renderCards(items, totalSupply, chain, contractAddress, minScore, maxSc
   grid.innerHTML = items.map((item, idx) => `
     <div class="item-card${item.isBargain ? ' bargain' : ''}" data-score="${item.totalScore}" data-price="${item.price != null ? item.price : 999999}" data-rarity="${item.rarityRank || 9999}" data-value="${item.valueScore || 0}" data-owner="${escapeHtml(item.owner || '')}">
       <div class="item-header">
-        <div>
+        <div class="item-header-left">
+          ${item.image && item.image.startsWith('https://') ? `<img class="item-thumb" src="${escapeHtml(item.image)}" alt="" loading="lazy">` : ''}
+          <div>
           <div class="item-name"><span class="item-idx">#${idx + 1}</span> ${escapeHtml(item.name)}</div>
           <div class="item-badges">
             ${item.isBargain ? '<span class="badge badge-bargain">Good Value</span>' : ''}
@@ -982,6 +989,7 @@ function renderCards(items, totalSupply, chain, contractAddress, minScore, maxSc
           <div class="item-price">${item.price != null ? `<span class="eth">${formatPrice(item.price)} ${escapeHtml(item.currency)}</span>` : '<span style="color:var(--text-muted)">Not listed</span>'}</div>
           ${item.owner ? `<div class="item-owner">Owner: <a href="https://opensea.io/${encodeURIComponent(item.owner)}" target="_blank" rel="noopener">${item.owner.slice(0,6)}...${item.owner.slice(-4)}</a></div>` : ''}
           ${item.valueScore != null ? `<div class="value-ratio">Value: ${item.valueScore} pts/ETH</div>` : ''}
+          </div>
         </div>
         <div class="item-score" style="color:${item.scoreColor}">
           ${item.totalScore}
@@ -1024,6 +1032,7 @@ function renderTable(items, totalSupply, chain, contractAddress, minScore, maxSc
   el.innerHTML = `<table>
     <thead><tr>
       <th>#</th>
+      <th></th>
       <th onclick="sortResults('score')">Score</th>
       <th onclick="sortResults('value')">Value</th>
       <th onclick="sortResults('price')">Price</th>
@@ -1037,6 +1046,7 @@ function renderTable(items, totalSupply, chain, contractAddress, minScore, maxSc
     ${items.map((item, idx) => `
       <tr class="expandable${item.isBargain ? ' bargain-row' : ''}" data-score="${item.totalScore}" data-price="${item.price != null ? item.price : 999999}" data-rarity="${item.rarityRank || 9999}" data-value="${item.valueScore || 0}" data-owner="${escapeHtml(item.owner || '')}" onclick="toggleTableRow(this)">
         <td><span class="tbl-idx">${idx + 1}</span></td>
+        <td>${item.image && item.image.startsWith('https://') ? `<img class="tbl-thumb" src="${escapeHtml(item.image)}" alt="" loading="lazy">` : ''}</td>
         <td class="score-cell" style="color:${item.scoreColor}">${item.totalScore}</td>
         <td>${item.valueScore != null ? item.valueScore : '—'}</td>
         <td class="price-cell">${item.price != null ? formatPrice(item.price) + ' ' + escapeHtml(item.currency) : '—'}</td>
@@ -1049,7 +1059,7 @@ function renderTable(items, totalSupply, chain, contractAddress, minScore, maxSc
         <td><a href="https://opensea.io/assets/${encodeURIComponent(chain)}/${encodeURIComponent(contractAddress)}/${encodeURIComponent(item.tokenId)}" target="_blank" rel="noopener" onclick="event.stopPropagation()">&#8599;</a></td>
       </tr>
       <tr class="expand-row" id="expand-${escapeHtml(item.tokenId)}">
-        <td colspan="9" class="expand-cell">
+        <td colspan="10" class="expand-cell">
           <div class="traits-grid">
             ${item.mainTraits.sort((a, b) => b.points - a.points || a.pct - b.pct).map(t => `
               <div class="trait-tag" style="${traitTagStyle(t.tier)}">
