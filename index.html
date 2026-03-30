@@ -1,0 +1,804 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>NFT Rarity Scorer</title>
+<style>
+  :root {
+    --orange: #ff8c00;
+    --purple: #9b59b6;
+    --blue: #3498db;
+    --common: #95a5a6;
+    --bg: #1a1a2e;
+    --card-bg: #16213e;
+    --panel-bg: #1a2340;
+    --text: #e0e0e0;
+    --text-muted: #8899aa;
+    --border: #2a3a5e;
+    --accent: #3498db;
+    --danger: #e74c3c;
+    --success: #2ecc71;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; }
+
+  /* Header */
+  .app-header { text-align: center; padding: 24px 20px 12px; }
+  .app-header h1 { font-size: 1.6rem; margin-bottom: 4px; }
+  .app-header .subtitle { color: var(--text-muted); font-size: 0.82rem; }
+
+  /* Panels */
+  .panel {
+    background: var(--card-bg); border: 1px solid var(--border); border-radius: 10px;
+    padding: 16px 20px; margin: 12px auto; max-width: 960px;
+  }
+  .panel-title {
+    font-size: 0.75rem; text-transform: uppercase; letter-spacing: 1px;
+    color: var(--text-muted); margin-bottom: 12px; font-weight: 600;
+  }
+
+  /* Form elements */
+  .form-row { display: flex; gap: 12px; align-items: flex-end; flex-wrap: wrap; }
+  .form-group { display: flex; flex-direction: column; gap: 4px; flex: 1; min-width: 140px; }
+  .form-group label { font-size: 0.78rem; color: var(--text-muted); }
+  .form-group input, .form-group select {
+    background: var(--bg); border: 1px solid var(--border); color: var(--text);
+    padding: 8px 12px; border-radius: 6px; font-size: 0.88rem;
+    outline: none; transition: border-color 0.2s;
+  }
+  .form-group input:focus, .form-group select:focus { border-color: var(--accent); }
+  .form-group input::placeholder { color: var(--text-muted); opacity: 0.6; }
+  .form-group.narrow { flex: 0 0 90px; min-width: 80px; }
+  .form-group.wide { flex: 3; min-width: 300px; }
+
+  /* API key */
+  .api-key-row { display: flex; gap: 8px; align-items: flex-end; }
+  .api-key-row .form-group { flex: 1; }
+  .api-key-row .key-status {
+    font-size: 0.75rem; padding: 9px 12px; border-radius: 6px;
+    white-space: nowrap; align-self: flex-end;
+  }
+  .key-saved { color: var(--success); }
+  .key-missing { color: var(--danger); }
+
+  /* Tier config */
+  .tier-config { display: flex; gap: 16px; flex-wrap: wrap; align-items: flex-end; }
+  .tier-group {
+    display: flex; align-items: center; gap: 6px; padding: 8px 12px;
+    border-radius: 8px; border: 1px solid;
+  }
+  .tier-group input {
+    width: 50px; background: var(--bg); border: 1px solid var(--border);
+    color: var(--text); padding: 4px 6px; border-radius: 4px; font-size: 0.85rem;
+    text-align: center;
+  }
+  .tier-group input:focus { border-color: var(--accent); outline: none; }
+  .tier-group .tier-label { font-size: 0.82rem; font-weight: 600; }
+  .tier-group .tier-sep { font-size: 0.75rem; color: var(--text-muted); }
+  .tier-orange { border-color: rgba(255,140,0,0.4); background: rgba(255,140,0,0.08); }
+  .tier-orange .tier-label { color: var(--orange); }
+  .tier-purple { border-color: rgba(155,89,182,0.4); background: rgba(155,89,182,0.08); }
+  .tier-purple .tier-label { color: var(--purple); }
+  .tier-blue { border-color: rgba(52,152,219,0.4); background: rgba(52,152,219,0.08); }
+  .tier-blue .tier-label { color: var(--blue); }
+
+  /* Mode toggle */
+  .mode-toggle { display: flex; gap: 0; border-radius: 6px; overflow: hidden; border: 1px solid var(--border); }
+  .mode-btn {
+    padding: 8px 20px; background: var(--bg); color: var(--text-muted);
+    border: none; cursor: pointer; font-size: 0.85rem; transition: all 0.2s;
+  }
+  .mode-btn.active { background: var(--accent); color: #fff; font-weight: 600; }
+  .mode-btn:hover:not(.active) { background: var(--panel-bg); }
+
+  /* Buttons */
+  .btn-analyze {
+    background: linear-gradient(135deg, var(--accent), #2980b9); color: #fff;
+    border: none; padding: 10px 32px; border-radius: 8px; font-size: 1rem;
+    font-weight: 600; cursor: pointer; transition: opacity 0.2s; letter-spacing: 0.5px;
+  }
+  .btn-analyze:hover { opacity: 0.9; }
+  .btn-analyze:disabled { opacity: 0.4; cursor: not-allowed; }
+
+  /* Progress */
+  .progress-container { display: none; margin: 16px auto; max-width: 960px; }
+  .progress-container.visible { display: block; }
+  .progress-bar-bg {
+    background: var(--bg); border-radius: 8px; height: 8px; overflow: hidden;
+    border: 1px solid var(--border);
+  }
+  .progress-bar-fill {
+    height: 100%; background: linear-gradient(90deg, var(--accent), var(--success));
+    border-radius: 8px; transition: width 0.3s ease; width: 0%;
+  }
+  .progress-text {
+    font-size: 0.78rem; color: var(--text-muted); margin-top: 6px; text-align: center;
+  }
+
+  /* Error */
+  .error-msg {
+    background: rgba(231,76,60,0.12); border: 1px solid var(--danger); color: var(--danger);
+    padding: 12px 16px; border-radius: 8px; margin: 12px auto; max-width: 960px;
+    font-size: 0.88rem; display: none;
+  }
+  .error-msg.visible { display: block; }
+
+  /* Stats bar */
+  .stats-bar {
+    display: none; gap: 16px; justify-content: center; margin: 16px auto;
+    max-width: 960px; flex-wrap: wrap;
+  }
+  .stats-bar.visible { display: flex; }
+  .stat { text-align: center; padding: 8px 20px; }
+  .stat .num { font-size: 1.5rem; font-weight: 700; }
+  .stat .lbl { font-size: 0.72rem; color: var(--text-muted); text-transform: uppercase; }
+
+  /* Sort controls */
+  .sort-controls {
+    display: none; gap: 8px; justify-content: center; margin: 12px auto; max-width: 960px; flex-wrap: wrap;
+  }
+  .sort-controls.visible { display: flex; }
+  .sort-btn {
+    background: var(--card-bg); border: 1px solid var(--border); color: var(--text);
+    padding: 6px 14px; border-radius: 6px; cursor: pointer; font-size: 0.82rem;
+    transition: all 0.2s;
+  }
+  .sort-btn:hover { border-color: var(--accent); }
+  .sort-btn.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+
+  /* Results grid */
+  .results-grid {
+    display: flex; flex-direction: column; gap: 12px;
+    max-width: 960px; margin: 16px auto; padding: 0 0 40px;
+  }
+
+  /* Item cards */
+  .item-card {
+    background: var(--card-bg); border: 1px solid var(--border); border-radius: 10px;
+    padding: 16px; transition: border-color 0.2s;
+  }
+  .item-card:hover { border-color: var(--accent); }
+  .item-header {
+    display: flex; justify-content: space-between; align-items: flex-start;
+    margin-bottom: 10px; flex-wrap: wrap; gap: 8px;
+  }
+  .item-name { font-size: 1.05rem; font-weight: 700; }
+  .item-rank { font-size: 0.78rem; color: var(--text-muted); }
+  .item-price { font-size: 0.88rem; color: var(--text-muted); }
+  .item-price .eth { color: var(--text); font-weight: 600; }
+  .item-score { font-size: 1.5rem; font-weight: 800; text-align: right; min-width: 70px; }
+  .score-breakdown { font-size: 0.68rem; color: var(--text-muted); white-space: nowrap; }
+
+  .traits-section { margin-top: 8px; }
+  .traits-label {
+    font-size: 0.72rem; color: var(--text-muted); text-transform: uppercase;
+    margin-bottom: 6px; letter-spacing: 0.5px;
+  }
+  .traits-grid { display: flex; flex-wrap: wrap; gap: 5px; }
+
+  .trait-tag {
+    display: inline-flex; flex-direction: column; padding: 3px 9px;
+    border-radius: 5px; font-size: 0.75rem; line-height: 1.3; border: 1px solid;
+  }
+  .trait-tag .trait-type { font-size: 0.62rem; opacity: 0.7; }
+  .trait-tag .trait-value { font-weight: 600; }
+  .trait-tag .trait-pct { font-size: 0.58rem; opacity: 0.6; }
+  .trait-orange { background: rgba(255,140,0,0.12); color: var(--orange); border-color: rgba(255,140,0,0.3); }
+  .trait-purple { background: rgba(155,89,182,0.12); color: var(--purple); border-color: rgba(155,89,182,0.3); }
+  .trait-blue { background: rgba(52,152,219,0.12); color: var(--blue); border-color: rgba(52,152,219,0.3); }
+  .trait-common { background: rgba(149,165,166,0.06); color: var(--common); border-color: rgba(149,165,166,0.15); }
+
+  .special-traits { margin-top: 6px; }
+  .special-toggle {
+    background: none; border: 1px solid var(--border); color: var(--text-muted);
+    padding: 3px 10px; border-radius: 4px; cursor: pointer; font-size: 0.7rem;
+  }
+  .special-toggle:hover { border-color: var(--accent); color: var(--text); }
+  .special-content { display: none; margin-top: 6px; }
+  .special-content.open { display: flex; flex-wrap: wrap; gap: 4px; }
+
+  .opensea-link {
+    display: inline-block; margin-top: 6px; font-size: 0.78rem;
+    color: var(--accent); text-decoration: none;
+  }
+  .opensea-link:hover { text-decoration: underline; }
+
+  @media (max-width: 640px) {
+    .form-row { flex-direction: column; }
+    .form-group.narrow { flex: 1; }
+    .form-group.wide { min-width: 100%; }
+    .tier-config { flex-direction: column; }
+    .item-header { flex-direction: column; }
+    .item-score { text-align: left; }
+  }
+</style>
+</head>
+<body>
+
+<div class="app-header">
+  <h1>NFT Rarity Scorer</h1>
+  <div class="subtitle">Score NFT traits by rarity tiers. Data from OpenSea. Runs entirely in your browser.</div>
+</div>
+
+<!-- API Key -->
+<div class="panel">
+  <div class="panel-title">API Key</div>
+  <div class="api-key-row">
+    <div class="form-group">
+      <input type="password" id="apiKey" placeholder="Enter your OpenSea API key" autocomplete="off">
+    </div>
+    <button class="btn-analyze" style="padding:8px 16px; font-size:0.85rem;" onclick="saveApiKey()">Save</button>
+    <span id="keyStatus" class="key-status"></span>
+  </div>
+</div>
+
+<!-- Query -->
+<div class="panel">
+  <div class="panel-title">Collection</div>
+  <div class="form-row" style="margin-bottom: 12px;">
+    <div class="form-group wide">
+      <label>OpenSea Collection URL or Slug</label>
+      <input type="text" id="collectionInput" placeholder="https://opensea.io/collection/your-collection or just the-slug">
+    </div>
+    <div class="form-group" style="flex: 0 0 auto;">
+      <label>Mode</label>
+      <div class="mode-toggle">
+        <button class="mode-btn active" data-mode="listed" onclick="setMode('listed')">Listed</button>
+        <button class="mode-btn" data-mode="all" onclick="setMode('all')">All</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Scoring Config -->
+<div class="panel">
+  <div class="panel-title">Scoring Tiers</div>
+  <div class="tier-config">
+    <div class="tier-group tier-orange">
+      <span class="tier-label">Orange</span>
+      <span class="tier-sep">&lt;</span>
+      <input type="number" id="thresh1" value="2" min="0" max="100" step="0.5">
+      <span class="tier-sep">% →</span>
+      <input type="number" id="points1" value="7" min="0" max="100">
+      <span class="tier-sep">pts</span>
+    </div>
+    <div class="tier-group tier-purple">
+      <span class="tier-label">Purple</span>
+      <input type="number" id="thresh1_upper" value="2" min="0" max="100" step="0.5" disabled style="width:40px; opacity:0.5;">
+      <span class="tier-sep">–</span>
+      <input type="number" id="thresh2" value="5" min="0" max="100" step="0.5">
+      <span class="tier-sep">% →</span>
+      <input type="number" id="points2" value="3" min="0" max="100">
+      <span class="tier-sep">pts</span>
+    </div>
+    <div class="tier-group tier-blue">
+      <span class="tier-label">Blue</span>
+      <input type="number" id="thresh2_upper" value="5" min="0" max="100" step="0.5" disabled style="width:40px; opacity:0.5;">
+      <span class="tier-sep">–</span>
+      <input type="number" id="thresh3" value="20" min="0" max="100" step="0.5">
+      <span class="tier-sep">% →</span>
+      <input type="number" id="points3" value="1" min="0" max="100">
+      <span class="tier-sep">pts</span>
+    </div>
+  </div>
+  <div style="margin-top: 16px; text-align: center;">
+    <button class="btn-analyze" id="analyzeBtn" onclick="analyze()">Analyze Collection</button>
+  </div>
+</div>
+
+<!-- Progress -->
+<div class="progress-container" id="progress">
+  <div class="progress-bar-bg"><div class="progress-bar-fill" id="progressFill"></div></div>
+  <div class="progress-text" id="progressText">Preparing...</div>
+</div>
+
+<!-- Error -->
+<div class="error-msg" id="errorMsg"></div>
+
+<!-- Stats -->
+<div class="stats-bar" id="statsBar">
+  <div class="stat"><div class="num" id="statCount">0</div><div class="lbl" id="statCountLabel">Items</div></div>
+  <div class="stat"><div class="num" id="statTop">0</div><div class="lbl">Top Score</div></div>
+  <div class="stat"><div class="num" id="statAvg">0</div><div class="lbl">Avg Score</div></div>
+  <div class="stat"><div class="num" id="statLow">0</div><div class="lbl">Low Score</div></div>
+  <div class="stat"><div class="num" id="statSupply">0</div><div class="lbl">Total Supply</div></div>
+</div>
+
+<!-- Sort -->
+<div class="sort-controls" id="sortControls">
+  <button class="sort-btn active" data-sort="score" onclick="sortResults('score')">Sort by Score</button>
+  <button class="sort-btn" data-sort="price" onclick="sortResults('price')">Sort by Price</button>
+  <button class="sort-btn" data-sort="rarity" onclick="sortResults('rarity')">Sort by OS Rarity</button>
+  <button class="sort-btn" data-sort="toggle" onclick="toggleSortDir()">&#8597; Toggle Direction</button>
+</div>
+
+<!-- Results -->
+<div class="results-grid" id="resultsGrid"></div>
+
+<script>
+// ─── State ───
+let currentMode = 'listed';
+let currentSort = 'score';
+let currentSortDir = 'desc';
+let scoredItems = [];
+let abortController = null;
+
+// ─── API Key ───
+function loadApiKey() {
+  const key = localStorage.getItem('opensea_api_key') || '';
+  document.getElementById('apiKey').value = key;
+  updateKeyStatus();
+}
+function saveApiKey() {
+  const key = document.getElementById('apiKey').value.trim();
+  if (key) {
+    localStorage.setItem('opensea_api_key', key);
+    updateKeyStatus();
+  }
+}
+function updateKeyStatus() {
+  const el = document.getElementById('keyStatus');
+  const key = localStorage.getItem('opensea_api_key');
+  if (key) {
+    el.textContent = 'Key saved';
+    el.className = 'key-status key-saved';
+  } else {
+    el.textContent = 'No key saved';
+    el.className = 'key-status key-missing';
+  }
+}
+function getApiKey() {
+  return document.getElementById('apiKey').value.trim() || localStorage.getItem('opensea_api_key') || '';
+}
+
+// ─── Mode ───
+function setMode(mode) {
+  currentMode = mode;
+  document.querySelectorAll('.mode-btn').forEach(b => {
+    b.classList.toggle('active', b.dataset.mode === mode);
+  });
+}
+
+// ─── Tier sync ───
+document.getElementById('thresh1').addEventListener('input', function() {
+  document.getElementById('thresh1_upper').value = this.value;
+});
+document.getElementById('thresh2').addEventListener('input', function() {
+  document.getElementById('thresh2_upper').value = this.value;
+});
+
+// ─── Helpers ───
+function parseSlug(input) {
+  input = input.trim();
+  const match = input.match(/opensea\.io\/collection\/([a-z0-9_-]+)/i);
+  if (match) return match[1];
+  if (/^[a-z0-9_-]+$/i.test(input)) return input;
+  return null;
+}
+
+function escapeHtml(str) {
+  return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+function showError(msg) {
+  const el = document.getElementById('errorMsg');
+  el.textContent = msg;
+  el.classList.add('visible');
+}
+function hideError() {
+  document.getElementById('errorMsg').classList.remove('visible');
+}
+
+function setProgress(pct, text) {
+  document.getElementById('progressFill').style.width = pct + '%';
+  document.getElementById('progressText').textContent = text;
+}
+function showProgress() { document.getElementById('progress').classList.add('visible'); }
+function hideProgress() { document.getElementById('progress').classList.remove('visible'); }
+
+async function apiGet(url, apiKey) {
+  const res = await fetch(url, {
+    headers: { 'X-API-KEY': apiKey, 'Accept': 'application/json' },
+    signal: abortController?.signal
+  });
+  if (!res.ok) {
+    const body = await res.text().catch(() => '');
+    throw new Error(`API ${res.status}: ${body.substring(0, 200)}`);
+  }
+  return res.json();
+}
+
+function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+// ─── Main Analysis ───
+async function analyze() {
+  hideError();
+  const apiKey = getApiKey();
+  if (!apiKey) { showError('Please enter your OpenSea API key first.'); return; }
+
+  const slug = parseSlug(document.getElementById('collectionInput').value);
+  if (!slug) { showError('Please enter a valid OpenSea collection URL or slug.'); return; }
+
+  const thresholds = [
+    parseFloat(document.getElementById('thresh1').value),
+    parseFloat(document.getElementById('thresh2').value),
+    parseFloat(document.getElementById('thresh3').value)
+  ];
+  const points = [
+    parseInt(document.getElementById('points1').value),
+    parseInt(document.getElementById('points2').value),
+    parseInt(document.getElementById('points3').value)
+  ];
+
+  const btn = document.getElementById('analyzeBtn');
+  btn.disabled = true;
+  btn.textContent = 'Analyzing...';
+  abortController = new AbortController();
+  showProgress();
+  document.getElementById('resultsGrid').innerHTML = '';
+  document.getElementById('statsBar').classList.remove('visible');
+  document.getElementById('sortControls').classList.remove('visible');
+
+  try {
+    // Step 1: Collection info
+    setProgress(5, 'Fetching collection info...');
+    const colData = await apiGet(`https://api.opensea.io/api/v2/collections/${slug}`, apiKey);
+    const totalSupply = colData.total_supply || 0;
+    const contracts = colData.contracts || [];
+    const chain = contracts[0]?.chain || 'ethereum';
+    const contractAddress = contracts[0]?.address || '';
+
+    if (!totalSupply) throw new Error('Could not determine collection total supply.');
+    if (!contractAddress) throw new Error('Could not determine contract address.');
+
+    // Step 2: Traits (rarity counts) — try dedicated endpoint first
+    setProgress(10, 'Fetching trait data...');
+    let traitCounts = {};
+    try {
+      const traitData = await apiGet(`https://api.opensea.io/api/v2/collections/${slug}/traits`, apiKey);
+      for (const [traitType, values] of Object.entries(traitData)) {
+        if (typeof values === 'object' && values !== null) {
+          for (const [val, count] of Object.entries(values)) {
+            if (typeof count === 'number') {
+              traitCounts[`${traitType}::${val}`] = count;
+            }
+          }
+        }
+      }
+    } catch (e) {
+      console.warn('Traits endpoint unavailable, will build from all items:', e.message);
+    }
+
+    const hasTraitCounts = Object.keys(traitCounts).length > 0;
+
+    // Step 2b: If no trait counts, fetch ALL collection items to build the rarity table
+    if (!hasTraitCounts) {
+      setProgress(15, 'Building trait rarity table from all items...');
+      const allNfts = await fetchAllItems(slug, apiKey, totalSupply, false, {});
+      traitCounts = {};
+      for (const nft of allNfts) {
+        for (const t of nft.traits) {
+          const key = `${t.type}::${t.value}`;
+          traitCounts[key] = (traitCounts[key] || 0) + 1;
+        }
+      }
+      console.log('Built trait counts from', allNfts.length, 'items,', Object.keys(traitCounts).length, 'unique trait pairs');
+
+      // If mode is "all", we already have all items — reuse them
+      if (currentMode === 'all') {
+        setProgress(95, 'Scoring items...');
+        scoredItems = allNfts.map(item => scoreItem(item, traitCounts, totalSupply, thresholds, points));
+        scoredItems.sort((a, b) => b.totalScore - a.totalScore);
+        setProgress(100, 'Done!');
+        renderResults(scoredItems, totalSupply, slug, chain, contractAddress, thresholds, points);
+        return; // skip the rest
+      }
+    }
+
+    // Step 3: Get items to display
+    let items = [];
+    if (currentMode === 'listed') {
+      setProgress(70, 'Fetching active listings...');
+      items = await fetchListedItems(slug, chain, contractAddress, apiKey, totalSupply, true, traitCounts);
+    } else {
+      setProgress(70, 'Fetching all items...');
+      items = await fetchAllItems(slug, apiKey, totalSupply, true, traitCounts);
+    }
+
+    if (items.length === 0) {
+      throw new Error('No items found. The collection may have no active listings.');
+    }
+
+    // Step 4: Score items
+    setProgress(95, 'Scoring items...');
+    scoredItems = items.map(item => scoreItem(item, traitCounts, totalSupply, thresholds, points));
+    scoredItems.sort((a, b) => b.totalScore - a.totalScore);
+
+    // Step 5: Render
+    setProgress(100, 'Done!');
+    renderResults(scoredItems, totalSupply, slug, chain, contractAddress, thresholds, points);
+
+  } catch (e) {
+    if (e.name === 'AbortError') {
+      showError('Analysis cancelled.');
+    } else {
+      showError(e.message);
+    }
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Analyze Collection';
+    setTimeout(hideProgress, 1000);
+  }
+}
+
+// ─── Fetch Listed Items ───
+async function fetchListedItems(slug, chain, contractAddress, apiKey, totalSupply, hasTraitCounts, traitCounts) {
+  // Get all active listings
+  let listings = [];
+  let next = null;
+  let page = 0;
+
+  do {
+    const url = next
+      ? `https://api.opensea.io/api/v2/listings/collection/${slug}/all?limit=100&next=${next}`
+      : `https://api.opensea.io/api/v2/listings/collection/${slug}/all?limit=100`;
+    const data = await apiGet(url, apiKey);
+    const batch = data.listings || [];
+    listings = listings.concat(batch);
+    next = data.next || null;
+    page++;
+    setProgress(25 + Math.min(page * 10, 30), `Fetched ${listings.length} listings...`);
+    if (next) await sleep(250);
+  } while (next);
+
+  // Deduplicate by token ID (keep best/lowest price)
+  const tokenMap = {};
+  for (const listing of listings) {
+    const tokenId = listing.protocol_data?.parameters?.offer?.[0]?.identifierOrCriteria;
+    if (!tokenId) continue;
+    const priceWei = BigInt(listing.price?.current?.value || '0');
+    const decimals = listing.price?.current?.decimals || 18;
+    const price = Number(priceWei) / Math.pow(10, decimals);
+    const currency = listing.price?.current?.currency || 'ETH';
+
+    if (!tokenMap[tokenId] || price < tokenMap[tokenId].price) {
+      tokenMap[tokenId] = { tokenId, price, currency };
+    }
+  }
+
+  const tokenIds = Object.keys(tokenMap);
+  setProgress(55, `Found ${tokenIds.length} unique listed items. Fetching traits...`);
+
+  // Fetch each item's traits
+  const items = [];
+  const batchSize = 5;
+  for (let i = 0; i < tokenIds.length; i += batchSize) {
+    const batch = tokenIds.slice(i, i + batchSize);
+    const promises = batch.map(async (tokenId) => {
+      try {
+        const data = await apiGet(
+          `https://api.opensea.io/api/v2/chain/${chain}/contract/${contractAddress}/nfts/${tokenId}`,
+          apiKey
+        );
+        const nft = data.nft || {};
+        const traits = (nft.traits || []).map(t => ({
+          type: t.trait_type,
+          value: String(t.value)
+        }));
+        return {
+          tokenId,
+          name: nft.name || `#${tokenId}`,
+          price: tokenMap[tokenId].price,
+          currency: tokenMap[tokenId].currency,
+          rarity: nft.rarity,
+          traits
+        };
+      } catch (e) {
+        console.warn(`Failed to fetch token ${tokenId}:`, e.message);
+        return null;
+      }
+    });
+
+    const results = await Promise.all(promises);
+    items.push(...results.filter(Boolean));
+    setProgress(55 + Math.round((i / tokenIds.length) * 35), `Fetched traits for ${items.length}/${tokenIds.length} items...`);
+    if (i + batchSize < tokenIds.length) await sleep(300);
+  }
+
+  return items;
+}
+
+// ─── Fetch All Items ───
+async function fetchAllItems(slug, apiKey, totalSupply, hasTraitCounts, traitCounts) {
+  let items = [];
+  let next = null;
+  let page = 0;
+
+  do {
+    const url = next
+      ? `https://api.opensea.io/api/v2/collection/${slug}/nfts?limit=200&next=${next}`
+      : `https://api.opensea.io/api/v2/collection/${slug}/nfts?limit=200`;
+    const data = await apiGet(url, apiKey);
+    const batch = (data.nfts || []).map(nft => ({
+      tokenId: nft.identifier,
+      name: nft.name || `#${nft.identifier}`,
+      price: null,
+      currency: null,
+      rarity: nft.rarity,
+      traits: (nft.traits || []).map(t => ({
+        type: t.trait_type,
+        value: String(t.value)
+      }))
+    }));
+    items = items.concat(batch);
+    next = data.next || null;
+    page++;
+    setProgress(25 + Math.min(Math.round((items.length / totalSupply) * 65), 65),
+      `Fetched ${items.length}/${totalSupply} items...`);
+    if (next) await sleep(250);
+  } while (next);
+
+  return items;
+}
+
+// ─── Scoring ───
+function scoreItem(item, traitCounts, totalSupply, thresholds, points) {
+  let totalScore = 0;
+  const traitScores = [];
+
+  for (const trait of item.traits) {
+    const key = `${trait.type}::${trait.value}`;
+    const count = traitCounts[key] || 0;
+    const pct = totalSupply > 0 ? (count / totalSupply) * 100 : 0;
+    let tier, pts;
+
+    if (pct < thresholds[0]) { tier = 'orange'; pts = points[0]; }
+    else if (pct < thresholds[1]) { tier = 'purple'; pts = points[1]; }
+    else if (pct < thresholds[2]) { tier = 'blue'; pts = points[2]; }
+    else { tier = 'common'; pts = 0; }
+
+    totalScore += pts;
+    traitScores.push({
+      type: trait.type, value: trait.value,
+      count, pct: pct.toFixed(2), tier, points: pts
+    });
+  }
+
+  const mainTraits = traitScores.filter(t => !t.type.startsWith('_'));
+  const specialTraits = traitScores.filter(t => t.type.startsWith('_') && t.points > 0);
+
+  return {
+    tokenId: item.tokenId,
+    name: item.name,
+    price: item.price,
+    currency: item.currency || 'ETH',
+    rarityRank: item.rarity?.rank,
+    totalSupply: totalSupply,
+    totalScore,
+    orangeCount: traitScores.filter(t => t.tier === 'orange').length,
+    purpleCount: traitScores.filter(t => t.tier === 'purple').length,
+    blueCount: traitScores.filter(t => t.tier === 'blue').length,
+    mainTraits,
+    specialTraits
+  };
+}
+
+// ─── Rendering ───
+function renderResults(items, totalSupply, slug, chain, contractAddress, thresholds, points) {
+  // Stats
+  document.getElementById('statCount').textContent = items.length;
+  document.getElementById('statCountLabel').textContent = currentMode === 'listed' ? 'Listed Items' : 'Total Items';
+  document.getElementById('statTop').textContent = items.length > 0 ? items[0].totalScore : 0;
+  document.getElementById('statAvg').textContent = items.length > 0 ? Math.round(items.reduce((s, i) => s + i.totalScore, 0) / items.length) : 0;
+  document.getElementById('statLow').textContent = items.length > 0 ? items[items.length - 1].totalScore : 0;
+  document.getElementById('statSupply').textContent = totalSupply;
+  document.getElementById('statsBar').classList.add('visible');
+  document.getElementById('sortControls').classList.add('visible');
+
+  renderCards(items, totalSupply, chain, contractAddress, thresholds, points);
+}
+
+function renderCards(items, totalSupply, chain, contractAddress, thresholds, points) {
+  const grid = document.getElementById('resultsGrid');
+  grid.innerHTML = items.map((item, idx) => `
+    <div class="item-card" data-score="${item.totalScore}" data-price="${item.price || 0}" data-rarity="${item.rarityRank || 9999}" data-name="${escapeHtml(item.name)}">
+      <div class="item-header">
+        <div>
+          <div class="item-name"><span class="item-idx">#${idx + 1}</span> ${escapeHtml(item.name)}</div>
+          <div class="item-rank">OpenSea Rarity Rank: ${item.rarityRank || 'N/A'} / ${totalSupply}</div>
+          <div class="item-price">${item.price != null ? `<span class="eth">${item.price} ${item.currency}</span>` : '<span style="color:var(--text-muted)">Not listed</span>'}</div>
+        </div>
+        <div class="item-score">
+          ${item.totalScore}
+          <div class="score-breakdown">
+            <span style="color:var(--orange)">${item.orangeCount}&times;${points[0]}</span> +
+            <span style="color:var(--purple)">${item.purpleCount}&times;${points[1]}</span> +
+            <span style="color:var(--blue)">${item.blueCount}&times;${points[2]}</span>
+          </div>
+        </div>
+      </div>
+      <div class="traits-section">
+        <div class="traits-label">Main Traits</div>
+        <div class="traits-grid">
+          ${item.mainTraits.sort((a, b) => b.points - a.points || a.pct - b.pct).map(t => `
+            <div class="trait-tag trait-${t.tier}">
+              <span class="trait-type">${escapeHtml(t.type)}</span>
+              <span class="trait-value">${escapeHtml(t.value)}</span>
+              <span class="trait-pct">${t.pct}% (${t.count}/${totalSupply})${t.points > 0 ? ' +' + t.points : ''}</span>
+            </div>
+          `).join('')}
+        </div>
+      </div>
+      ${item.specialTraits.length > 0 ? `
+      <div class="special-traits">
+        <button class="special-toggle" onclick="toggleSpecial(this)">&#9656; Show ${item.specialTraits.length} Scoring Special Traits</button>
+        <div class="special-content">
+          ${item.specialTraits.sort((a, b) => b.points - a.points || a.pct - b.pct).map(t => `
+            <div class="trait-tag trait-${t.tier}">
+              <span class="trait-type">${escapeHtml(t.type.replace(/^_/, ''))}</span>
+              <span class="trait-value">${escapeHtml(t.value)}</span>
+              <span class="trait-pct">${t.pct}% +${t.points}</span>
+            </div>
+          `).join('')}
+        </div>
+      </div>
+      ` : ''}
+      <a class="opensea-link" href="https://opensea.io/assets/${chain}/${contractAddress}/${item.tokenId}" target="_blank" rel="noopener">View on OpenSea &#8599;</a>
+    </div>
+  `).join('');
+}
+
+function toggleSpecial(btn) {
+  const content = btn.nextElementSibling;
+  const isOpen = content.classList.toggle('open');
+  const count = content.children.length;
+  btn.innerHTML = isOpen
+    ? `&#9662; Hide ${count} Scoring Special Traits`
+    : `&#9656; Show ${count} Scoring Special Traits`;
+}
+
+// ─── Sorting ───
+function sortResults(field) {
+  if (field === currentSort) {
+    currentSortDir = currentSortDir === 'desc' ? 'asc' : 'desc';
+  } else {
+    currentSort = field;
+    currentSortDir = field === 'rarity' ? 'asc' : 'desc';
+  }
+  document.querySelectorAll('.sort-btn[data-sort]').forEach(b => {
+    if (b.dataset.sort !== 'toggle') b.classList.toggle('active', b.dataset.sort === field);
+  });
+  applySorting();
+}
+
+function toggleSortDir() {
+  currentSortDir = currentSortDir === 'desc' ? 'asc' : 'desc';
+  applySorting();
+}
+
+function applySorting() {
+  const grid = document.getElementById('resultsGrid');
+  const cards = Array.from(grid.querySelectorAll('.item-card'));
+  cards.sort((a, b) => {
+    let va, vb;
+    switch (currentSort) {
+      case 'score': va = +a.dataset.score; vb = +b.dataset.score; break;
+      case 'price': va = +a.dataset.price; vb = +b.dataset.price; break;
+      case 'rarity': va = +a.dataset.rarity; vb = +b.dataset.rarity; break;
+      default: va = +a.dataset.score; vb = +b.dataset.score;
+    }
+    return currentSortDir === 'desc' ? vb - va : va - vb;
+  });
+  cards.forEach((card, idx) => {
+    grid.appendChild(card);
+    card.querySelector('.item-idx').textContent = '#' + (idx + 1);
+  });
+}
+
+// ─── Init ───
+loadApiKey();
+</script>
+
+</body>
+</html>
