@@ -3,6 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; connect-src https://api.opensea.io; img-src https: data: blob:;">
 <title>NFT Rarity Scorer</title>
 <style>
   :root, [data-theme="dark"] {
@@ -292,6 +293,7 @@
       <input type="password" id="apiKey" placeholder="Enter your OpenSea API key" autocomplete="off">
     </div>
     <button class="btn btn-analyze" style="padding:8px 16px; font-size:0.85rem;" onclick="saveApiKey()">Save</button>
+    <button class="btn btn-secondary" style="padding:8px 12px; font-size:0.78rem;" onclick="clearApiKey()" title="Remove saved key">Clear</button>
     <span id="keyStatus" class="key-status"></span>
   </div>
 </div>
@@ -525,6 +527,11 @@ function loadApiKey() {
 function saveApiKey() {
   const key = document.getElementById('apiKey').value.trim();
   if (key) { localStorage.setItem('opensea_api_key', key); updateKeyStatus(); }
+}
+function clearApiKey() {
+  localStorage.removeItem('opensea_api_key');
+  document.getElementById('apiKey').value = '';
+  updateKeyStatus();
 }
 function updateKeyStatus() {
   const el = document.getElementById('keyStatus');
@@ -830,7 +837,8 @@ function showCollectionInfo(colData, totalSupply) {
   const img = document.getElementById('colImage');
   const name = document.getElementById('colName');
   const meta = document.getElementById('colMeta');
-  img.src = colData.image_url || '';
+  const imgUrl = colData.image_url || '';
+  img.src = imgUrl.startsWith('https://') ? imgUrl : '';
   img.style.display = colData.image_url ? 'block' : 'none';
   name.textContent = colData.name || colData.collection || '';
   meta.textContent = `${totalSupply} items · ${currentMode === 'listed' ? 'Listed' : 'All'} mode`;
@@ -971,8 +979,8 @@ function renderCards(items, totalSupply, chain, contractAddress, minScore, maxSc
             ${item.isBargain ? '<span class="badge badge-bargain">Good Value</span>' : ''}
           </div>
           <div class="item-rank">OS Rarity: ${item.rarityRank || 'N/A'} / ${totalSupply}</div>
-          <div class="item-price">${item.price != null ? `<span class="eth">${formatPrice(item.price)} ${item.currency}</span>` : '<span style="color:var(--text-muted)">Not listed</span>'}</div>
-          ${item.owner ? `<div class="item-owner">Owner: <a href="https://opensea.io/${item.owner}" target="_blank" rel="noopener">${item.owner.slice(0,6)}...${item.owner.slice(-4)}</a></div>` : ''}
+          <div class="item-price">${item.price != null ? `<span class="eth">${formatPrice(item.price)} ${escapeHtml(item.currency)}</span>` : '<span style="color:var(--text-muted)">Not listed</span>'}</div>
+          ${item.owner ? `<div class="item-owner">Owner: <a href="https://opensea.io/${encodeURIComponent(item.owner)}" target="_blank" rel="noopener">${item.owner.slice(0,6)}...${item.owner.slice(-4)}</a></div>` : ''}
           ${item.valueScore != null ? `<div class="value-ratio">Value: ${item.valueScore} pts/ETH</div>` : ''}
         </div>
         <div class="item-score" style="color:${item.scoreColor}">
@@ -1006,7 +1014,7 @@ function renderCards(items, totalSupply, chain, contractAddress, minScore, maxSc
             </div>`).join('')}
         </div>
       </div>` : ''}
-      <a class="opensea-link" href="https://opensea.io/assets/${chain}/${contractAddress}/${item.tokenId}" target="_blank" rel="noopener">View on OpenSea &#8599;</a>
+      <a class="opensea-link" href="https://opensea.io/assets/${encodeURIComponent(chain)}/${encodeURIComponent(contractAddress)}/${encodeURIComponent(item.tokenId)}" target="_blank" rel="noopener">View on OpenSea &#8599;</a>
     </div>
   `).join('');
 }
@@ -1031,16 +1039,16 @@ function renderTable(items, totalSupply, chain, contractAddress, minScore, maxSc
         <td><span class="tbl-idx">${idx + 1}</span></td>
         <td class="score-cell" style="color:${item.scoreColor}">${item.totalScore}</td>
         <td>${item.valueScore != null ? item.valueScore : '—'}</td>
-        <td class="price-cell">${item.price != null ? formatPrice(item.price) + ' ' + item.currency : '—'}</td>
+        <td class="price-cell">${item.price != null ? formatPrice(item.price) + ' ' + escapeHtml(item.currency) : '—'}</td>
         <td>${escapeHtml(item.name)}${item.isBargain ? ' <span class="badge badge-bargain">Value</span>' : ''}</td>
-        <td>${item.owner ? `<a href="https://opensea.io/${item.owner}" target="_blank" rel="noopener" onclick="event.stopPropagation()">${item.owner.slice(0,6)}...${item.owner.slice(-4)}</a>` : '—'}</td>
+        <td>${item.owner ? `<a href="https://opensea.io/${encodeURIComponent(item.owner)}" target="_blank" rel="noopener" onclick="event.stopPropagation()">${escapeHtml(item.owner.slice(0,6))}...${escapeHtml(item.owner.slice(-4))}</a>` : '—'}</td>
         <td>${item.rarityRank || 'N/A'}</td>
         <td><div class="tier-dots">
           ${activeTiers.map(t => `<span style="color:${t.color}">${item.tierCounts[t.name] || 0}</span>`).join('/')}
         </div></td>
-        <td><a href="https://opensea.io/assets/${chain}/${contractAddress}/${item.tokenId}" target="_blank" rel="noopener" onclick="event.stopPropagation()">&#8599;</a></td>
+        <td><a href="https://opensea.io/assets/${encodeURIComponent(chain)}/${encodeURIComponent(contractAddress)}/${encodeURIComponent(item.tokenId)}" target="_blank" rel="noopener" onclick="event.stopPropagation()">&#8599;</a></td>
       </tr>
-      <tr class="expand-row" id="expand-${item.tokenId}">
+      <tr class="expand-row" id="expand-${escapeHtml(item.tokenId)}">
         <td colspan="9" class="expand-cell">
           <div class="traits-grid">
             ${item.mainTraits.sort((a, b) => b.points - a.points || a.pct - b.pct).map(t => `
@@ -1124,16 +1132,24 @@ function makeSortFn(field, dir) {
 }
 
 // ─── CSV Export ───
+function csvSafe(val) {
+  let s = String(val == null ? '' : val);
+  // Prevent formula injection in spreadsheets
+  if (/^[=+\-@\t\r]/.test(s)) s = "'" + s;
+  // Escape double quotes and wrap if contains comma, quote, or newline
+  if (/[",\n\r]/.test(s)) s = '"' + s.replace(/"/g, '""') + '"';
+  return s;
+}
 function exportCSV() {
   if (scoredItems.length === 0) return;
   const tierHeaders = activeTiers.map(t => t.name + ' Traits');
   const headers = ['Rank', 'Name', 'Token ID', 'Score', 'Value (pts/ETH)', 'Price', 'Currency', 'Owner', 'OS Rarity Rank', ...tierHeaders, 'Is Bargain', 'OpenSea URL'];
   const rows = scoredItems.map((item, idx) => [
-    idx + 1, `"${item.name}"`, item.tokenId, item.totalScore,
+    idx + 1, csvSafe(item.name), csvSafe(item.tokenId), item.totalScore,
     item.valueScore ?? '', item.price != null ? formatPrice(item.price) : '',
-    item.currency, item.owner || '', item.rarityRank || '',
+    csvSafe(item.currency), csvSafe(item.owner || ''), item.rarityRank || '',
     ...activeTiers.map(t => item.tierCounts[t.name] || 0),
-    item.isBargain ? 'Yes' : '', `https://opensea.io/assets/${lastChain}/${lastContract}/${item.tokenId}`
+    item.isBargain ? 'Yes' : '', csvSafe(`https://opensea.io/assets/${lastChain}/${lastContract}/${item.tokenId}`)
   ]);
   const csv = [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
   const blob = new Blob([csv], { type: 'text/csv' });
