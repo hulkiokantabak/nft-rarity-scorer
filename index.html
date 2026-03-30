@@ -1068,13 +1068,11 @@ async function resolveOwnerNames(items, apiKey) {
   const toResolve = unique.filter(addr => !ownerNameCache.has(addr));
   if (toResolve.length === 0) { applyOwnerNames(items); return; }
 
-  const cap = Math.min(toResolve.length, 200);
-  const batch = toResolve.slice(0, cap);
   const batchSize = 10;
 
-  for (let i = 0; i < batch.length; i += batchSize) {
-    const chunk = batch.slice(i, i + batchSize);
-    const results = await Promise.allSettled(chunk.map(async addr => {
+  for (let i = 0; i < toResolve.length; i += batchSize) {
+    const chunk = toResolve.slice(i, i + batchSize);
+    await Promise.allSettled(chunk.map(async addr => {
       try {
         const data = await apiGet(`https://api.opensea.io/api/v2/accounts/${encodeURIComponent(addr)}`, apiKey);
         const name = data.username || data.ens_name || null;
@@ -1083,8 +1081,8 @@ async function resolveOwnerNames(items, apiKey) {
         ownerNameCache.set(addr, null);
       }
     }));
-    setProgress(92 + Math.round((Math.min(i + batchSize, batch.length) / batch.length) * 3),
-      `Resolving owner names (${Math.min(i + batchSize, batch.length)}/${batch.length})...`);
+    setProgress(90 + Math.round((Math.min(i + batchSize, toResolve.length) / toResolve.length) * 5),
+      `Resolving owner names (${Math.min(i + batchSize, toResolve.length)}/${toResolve.length})...`);
     if (i + batchSize < batch.length) await sleep(200);
   }
   applyOwnerNames(items);
