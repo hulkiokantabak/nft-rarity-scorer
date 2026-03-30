@@ -892,6 +892,7 @@ async function analyze() {
       console.log('Built trait counts from', allNfts.length, 'items,', Object.keys(traitCounts).length, 'unique trait pairs');
 
       if (currentMode === 'all') {
+        await resolveOwnerNames(allNfts, apiKey);
         setProgress(95, 'Scoring items...');
         const allTraitTypes = buildTraitTypes(traitCounts);
         const scoreMissing = document.getElementById('scoreMissing').checked;
@@ -914,6 +915,7 @@ async function analyze() {
 
     if (items.length === 0) throw new Error('No items found. The collection may have no active listings.');
 
+    await resolveOwnerNames(items, apiKey);
     setProgress(95, 'Scoring items...');
     const allTraitTypes = buildTraitTypes(traitCounts);
     const scoreMissing = document.getElementById('scoreMissing').checked;
@@ -1055,6 +1057,46 @@ async function fetchAllItems(slug, apiKey, totalSupply) {
   return items;
 }
 
+// ─── Owner Name Resolution ───
+let ownerNameCache = new Map(); // address -> displayName
+
+async function resolveOwnerNames(items, apiKey) {
+  const unique = [...new Set(items.map(i => i.owner).filter(Boolean))];
+  // Only resolve addresses we haven't seen yet
+  const toResolve = unique.filter(addr => !ownerNameCache.has(addr));
+  if (toResolve.length === 0) { applyOwnerNames(items); return; }
+
+  const cap = Math.min(toResolve.length, 200);
+  const batch = toResolve.slice(0, cap);
+  const batchSize = 10;
+
+  for (let i = 0; i < batch.length; i += batchSize) {
+    const chunk = batch.slice(i, i + batchSize);
+    const results = await Promise.allSettled(chunk.map(async addr => {
+      try {
+        const data = await apiGet(`https://api.opensea.io/api/v2/accounts/${encodeURIComponent(addr)}`, apiKey);
+        const name = data.username || data.ens_name || null;
+        ownerNameCache.set(addr, name);
+      } catch {
+        ownerNameCache.set(addr, null);
+      }
+    }));
+    setProgress(92 + Math.round((Math.min(i + batchSize, batch.length) / batch.length) * 3),
+      `Resolving owner names (${Math.min(i + batchSize, batch.length)}/${batch.length})...`);
+    if (i + batchSize < batch.length) await sleep(200);
+  }
+  applyOwnerNames(items);
+}
+
+function applyOwnerNames(items) {
+  for (const item of items) {
+    if (item.owner && ownerNameCache.has(item.owner)) {
+      const name = ownerNameCache.get(item.owner);
+      if (name) item.ownerName = name;
+    }
+  }
+}
+
 // ─── Trait Weights ───
 function toggleWeightsPanel() {
   const content = document.getElementById('weightsContent');
@@ -1146,7 +1188,7 @@ function scoreItem(item, traitCounts, totalSupply, thresholds, points, allTraitT
   traitScores.forEach(t => { if (tierCounts[t.tier] !== undefined) tierCounts[t.tier]++; });
   return {
     tokenId: item.tokenId, name: item.name, image: item.image, price: item.price, currency: item.currency || 'ETH',
-    rarityRank: item.rarity?.rank, totalSupply, totalScore, owner: item.owner,
+    rarityRank: item.rarity?.rank, totalSupply, totalScore, owner: item.owner, ownerName: item.ownerName || null,
     tierCounts,
     mainTraits: traitScores.filter(t => !t.type.startsWith('_')),
     specialTraits: traitScores.filter(t => t.type.startsWith('_') && t.points > 0)
@@ -1255,7 +1297,7 @@ function renderCards(items, totalSupply, chain, contractAddress, minScore, maxSc
           </div>
           <div class="item-rank">OS Rarity: ${item.rarityRank || 'N/A'} / ${totalSupply}</div>
           <div class="item-price">${item.price != null ? `<span class="eth">${formatPrice(item.price)} ${escapeHtml(item.currency)}</span>` : '<span style="color:var(--text-muted)">Not listed</span>'}</div>
-          ${item.owner ? `<div class="item-owner">Owner: <a href="https://opensea.io/${encodeURIComponent(item.owner)}" target="_blank" rel="noopener">${item.owner.slice(0,6)}...${item.owner.slice(-4)}</a></div>` : ''}
+          ${item.owner ? `<div class="item-owner">Owner: <a href="https://opensea.io/${encodeURIComponent(item.ownerName || item.owner)}" target="_blank" rel="noopener">${item.ownerName ? escapeHtml(item.ownerName) : item.owner.slice(0,6) + '...' + item.owner.slice(-4)}</a></div>` : ''}
           ${item.valueScore != null ? `<div class="value-ratio">Value: ${item.valueScore} pts/ETH</div>` : ''}
           </div>
         </div>
@@ -1319,7 +1361,7 @@ function renderTable(items, totalSupply, chain, contractAddress, minScore, maxSc
         <td>${item.valueScore != null ? item.valueScore : '—'}</td>
         <td class="price-cell">${item.price != null ? formatPrice(item.price) + ' ' + escapeHtml(item.currency) : '—'}</td>
         <td>${escapeHtml(item.name)}${item.isBargain ? ' <span class="badge badge-bargain">Value</span>' : ''}</td>
-        <td>${item.owner ? `<a href="https://opensea.io/${encodeURIComponent(item.owner)}" target="_blank" rel="noopener" onclick="event.stopPropagation()">${escapeHtml(item.owner.slice(0,6))}...${escapeHtml(item.owner.slice(-4))}</a>` : '—'}</td>
+        <td>${item.owner ? `<a href="https://opensea.io/${encodeURIComponent(item.ownerName || item.owner)}" target="_blank" rel="noopener" onclick="event.stopPropagation()">${item.ownerName ? escapeHtml(item.ownerName) : escapeHtml(item.owner.slice(0,6)) + '...' + escapeHtml(item.owner.slice(-4))}</a>` : '—'}</td>
         <td>${item.rarityRank || 'N/A'}</td>
         <td><div class="tier-dots">
           ${activeTiers.map(t => `<span style="color:${t.color}">${item.tierCounts[t.name] || 0}</span>`).join('/')}
@@ -1376,8 +1418,8 @@ function applySorting() {
 function makeSortFn(field, dir) {
   return (a, b) => {
     if (field === 'owner') {
-      const va = (a.owner || '').toLowerCase();
-      const vb = (b.owner || '').toLowerCase();
+      const va = (a.ownerName || a.owner || '').toLowerCase();
+      const vb = (b.ownerName || b.owner || '').toLowerCase();
       const cmp = va.localeCompare(vb);
       return dir === 'desc' ? -cmp : cmp;
     }
@@ -1402,7 +1444,7 @@ function applyFilters() {
   if (!hasFilter) { filteredItems = null; displayCount = PAGE_SIZE; rerenderCurrentView(); return; }
   filteredItems = scoredItems.filter(item => {
     if (search) {
-      const hay = [item.name, item.owner || '', ...item.mainTraits.map(t => t.type + ' ' + t.value)].join(' ').toLowerCase();
+      const hay = [item.name, item.ownerName || '', item.owner || '', ...item.mainTraits.map(t => t.type + ' ' + t.value)].join(' ').toLowerCase();
       if (!hay.includes(search)) return false;
     }
     if (!isNaN(minP) && (item.price == null || item.price < minP)) return false;
@@ -1439,7 +1481,7 @@ function exportCSV() {
   const rows = exportItems.map((item, idx) => [
     idx + 1, csvSafe(item.name), csvSafe(item.tokenId), item.totalScore,
     item.valueScore ?? '', item.price != null ? formatPrice(item.price) : '',
-    csvSafe(item.currency), csvSafe(item.owner || ''), item.rarityRank || '',
+    csvSafe(item.currency), csvSafe(item.ownerName || item.owner || ''), item.rarityRank || '',
     ...activeTiers.map(t => item.tierCounts[t.name] || 0),
     item.isBargain ? 'Yes' : '', csvSafe(`https://opensea.io/assets/${encodeURIComponent(lastChain)}/${encodeURIComponent(lastContract)}/${encodeURIComponent(item.tokenId)}`)
   ]);
