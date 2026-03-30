@@ -277,7 +277,19 @@
     .item-score { text-align: left; }
     .theme-toggle { top: 12px; right: 12px; }
     .results-table { overflow-x: auto; }
+    /* Hide Value(4), Owner(7), Tiers(9) columns on mobile */
+    .results-table th:nth-child(4), .results-table td:nth-child(4),
+    .results-table th:nth-child(7), .results-table td:nth-child(7),
+    .results-table th:nth-child(9), .results-table td:nth-child(9) { display: none; }
   }
+
+  /* Histogram */
+  #histogram svg { max-width: 100%; }
+  #histogram rect { transition: opacity 0.15s; }
+  #histogram rect:hover { opacity: 0.7; }
+
+  /* Thumbnail toggle */
+  .thumbs-off .item-thumb, .thumbs-off .tbl-thumb { display: none !important; }
 </style>
 </head>
 <body>
@@ -362,9 +374,26 @@
   <!-- Custom tiers (blank slate, 1-10 tiers) -->
   <div class="custom-tiers" id="customTiers"></div>
 
-  <div style="margin-top: 16px; text-align: center; display: flex; gap: 10px; justify-content: center;">
+  <div style="margin-top: 12px; display: flex; gap: 16px; justify-content: center; align-items: center; flex-wrap: wrap;">
+    <label style="display:flex; align-items:center; gap:6px; font-size:0.82rem; cursor:pointer; color:var(--text-muted);">
+      <input type="checkbox" id="scoreMissing"> Score missing traits
+    </label>
     <button class="btn btn-analyze" id="analyzeBtn" onclick="analyze()">Analyze Collection</button>
     <button class="btn btn-cancel" id="cancelBtn" onclick="cancelAnalysis()" style="display: none;">Cancel</button>
+  </div>
+</div>
+
+<!-- Trait Weights (appears after first analysis) -->
+<div class="panel" id="weightsPanel" style="display:none;">
+  <div class="panel-title" style="cursor:pointer; user-select:none;" onclick="toggleWeightsPanel()">
+    Trait Weights <span id="weightsToggleIcon" style="font-size:0.7rem;">&#9656;</span>
+  </div>
+  <div id="weightsContent" style="display:none;">
+    <div id="weightsList" style="display:flex; flex-wrap:wrap; gap:8px;"></div>
+    <div style="margin-top:10px; text-align:center;">
+      <button class="btn btn-analyze" style="padding:6px 20px; font-size:0.85rem;" onclick="reScoreWithWeights()">Re-Score</button>
+      <span style="font-size:0.72rem; color:var(--text-muted); margin-left:8px;">Adjust weights and re-score without re-fetching</span>
+    </div>
   </div>
 </div>
 
@@ -394,7 +423,9 @@
     <div class="stat"><div class="num" id="statAvg">0</div><div class="lbl">Avg Score</div></div>
     <div class="stat"><div class="num" id="statLow">0</div><div class="lbl">Low Score</div></div>
     <div class="stat"><div class="num" id="statSupply">0</div><div class="lbl">Total Supply</div></div>
+    <div class="stat" id="statFloorWrap" style="display:none;"><div class="num" id="statFloor">&mdash;</div><div class="lbl">Floor Price</div></div>
   </div>
+  <div id="histogram" style="margin:6px 0; text-align:center;"></div>
   <div class="controls-row">
     <button class="sort-btn active" data-sort="score" onclick="sortResults('score')">Score</button>
     <button class="sort-btn" data-sort="value" onclick="sortResults('value')">Value</button>
@@ -407,6 +438,13 @@
       <button class="view-btn" data-view="table" onclick="setView('table')">Table</button>
     </div>
     <button class="btn btn-secondary" onclick="exportCSV()" style="font-size:0.78rem; padding:5px 12px;">CSV</button>
+    <button class="btn btn-secondary" id="thumbToggle" onclick="toggleThumbs()" style="font-size:0.78rem; padding:5px 12px;">Thumbs</button>
+  </div>
+  <div class="controls-row" style="margin-top:6px;">
+    <input type="text" id="filterSearch" placeholder="Search name, trait, owner..." oninput="applyFilters()" style="background:var(--bg); border:1px solid var(--border); color:var(--text); padding:5px 10px; border-radius:6px; font-size:0.78rem; flex:1; min-width:160px; outline:none;">
+    <input type="number" id="filterPriceMin" placeholder="Min ETH" oninput="applyFilters()" style="background:var(--bg); border:1px solid var(--border); color:var(--text); padding:5px 8px; border-radius:6px; font-size:0.78rem; width:80px; outline:none;">
+    <input type="number" id="filterPriceMax" placeholder="Max ETH" oninput="applyFilters()" style="background:var(--bg); border:1px solid var(--border); color:var(--text); padding:5px 8px; border-radius:6px; font-size:0.78rem; width:80px; outline:none;">
+    <button class="btn btn-secondary" onclick="clearFilters()" style="font-size:0.78rem; padding:5px 12px;">Clear</button>
   </div>
 </div>
 
@@ -415,6 +453,12 @@
 
 <!-- Results: Table view -->
 <div class="results-table" id="resultsTable"></div>
+
+<!-- Pagination -->
+<div id="showMoreWrap" style="display:none; text-align:center; max-width:960px; margin:16px auto; padding-bottom:40px;">
+  <button class="btn btn-secondary" onclick="showMore()" style="padding:8px 24px;">Show 50 More</button>
+  <div style="font-size:0.75rem; color:var(--text-muted); margin-top:6px;" id="showMoreCount"></div>
+</div>
 
 <script>
 // ─── State ───
@@ -432,6 +476,12 @@ let lastThresholds = [];
 let lastPoints = [];
 let currentTierMode = 'standard'; // 'standard' or 'custom'
 let activeTiers = []; // unified tier array used during rendering: [{name, color, threshold, points}, ...]
+let displayCount = 50;
+const PAGE_SIZE = 50;
+let filteredItems = null; // null = no filter, use scoredItems
+let renderParams = {}; // cached params for re-rendering
+let traitWeights = new Map(); // traitType -> multiplier
+let cachedFetchData = null; // {items, traitCounts, totalSupply, thresholds, points, allTraitTypes, slug, chain, contractAddress}
 
 // ─── Tier Mode ───
 function setTierMode(mode) {
@@ -488,6 +538,19 @@ function ensureCustomActions() {
   actions.innerHTML = `<button class="btn btn-secondary" onclick="addCustomTier()" style="font-size:0.78rem; padding:5px 12px;">+ Add Tier</button>
     <span style="font-size:0.72rem; color:var(--text-muted); align-self:center;">Traits above the last tier threshold score 0 pts</span>`;
   container.appendChild(actions);
+  // Add preset controls
+  if (!container.querySelector('.preset-controls')) {
+    const presets = document.createElement('div');
+    presets.className = 'preset-controls';
+    presets.style.cssText = 'display:flex; gap:6px; align-items:center; flex-wrap:wrap; margin-top:8px;';
+    presets.innerHTML = `<select id="presetSelect" style="background:var(--bg); border:1px solid var(--border); color:var(--text); padding:4px 8px; border-radius:4px; font-size:0.78rem;"><option value="">Presets...</option></select>
+      <button class="btn btn-secondary" onclick="loadPreset()" style="font-size:0.72rem; padding:4px 8px;">Load</button>
+      <input type="text" id="presetName" placeholder="Preset name" maxlength="30" style="background:var(--bg); border:1px solid var(--border); color:var(--text); padding:4px 8px; border-radius:4px; font-size:0.78rem; width:120px;">
+      <button class="btn btn-secondary" onclick="savePreset()" style="font-size:0.72rem; padding:4px 8px;">Save</button>
+      <button class="btn btn-secondary" onclick="deletePreset()" style="font-size:0.72rem; padding:4px 8px; color:var(--danger);">Del</button>`;
+    container.appendChild(presets);
+    refreshPresetDropdown();
+  }
 }
 
 function updateCustomTierNumbers() {
@@ -505,6 +568,63 @@ function getCustomTiers() {
     threshold: parseFloat(row.querySelector('.ct-thresh').value) || 0,
     points: Math.max(0, parseInt(row.querySelector('.ct-pts').value) || 0)
   })).sort((a, b) => a.threshold - b.threshold);
+}
+
+// ─── Tier Presets ───
+function getPresets() {
+  try { return JSON.parse(localStorage.getItem('nft_scorer_tier_presets') || '[]'); } catch { return []; }
+}
+function refreshPresetDropdown() {
+  const sel = document.getElementById('presetSelect');
+  if (!sel) return;
+  const presets = getPresets();
+  sel.innerHTML = '<option value="">Presets...</option>' + presets.map((p, i) => `<option value="${i}">${escapeHtml(p.name)}</option>`).join('');
+}
+function savePreset() {
+  const name = document.getElementById('presetName')?.value.trim();
+  if (!name) return;
+  const tiers = getCustomTiers();
+  if (tiers.length === 0) return;
+  const presets = getPresets();
+  presets.push({ name, tiers });
+  localStorage.setItem('nft_scorer_tier_presets', JSON.stringify(presets));
+  document.getElementById('presetName').value = '';
+  refreshPresetDropdown();
+}
+function loadPreset() {
+  const sel = document.getElementById('presetSelect');
+  const idx = parseInt(sel?.value);
+  if (isNaN(idx)) return;
+  const presets = getPresets();
+  if (!presets[idx]) return;
+  // Clear existing custom tier rows
+  const container = document.getElementById('customTiers');
+  container.querySelectorAll('.custom-tier-row').forEach(r => r.remove());
+  for (const t of presets[idx].tiers) addCustomTier(t.name, t.threshold, t.points, t.color);
+}
+function deletePreset() {
+  const sel = document.getElementById('presetSelect');
+  const idx = parseInt(sel?.value);
+  if (isNaN(idx)) return;
+  const presets = getPresets();
+  presets.splice(idx, 1);
+  localStorage.setItem('nft_scorer_tier_presets', JSON.stringify(presets));
+  refreshPresetDropdown();
+}
+
+// ─── Thumbnails ───
+let thumbsVisible = true;
+function toggleThumbs() {
+  thumbsVisible = !thumbsVisible;
+  document.body.classList.toggle('thumbs-off', !thumbsVisible);
+  document.getElementById('thumbToggle').textContent = thumbsVisible ? 'Thumbs' : 'No Thumbs';
+  localStorage.setItem('nft_scorer_thumbs', thumbsVisible ? 'on' : 'off');
+}
+function loadThumbs() {
+  if (localStorage.getItem('nft_scorer_thumbs') === 'off') {
+    thumbsVisible = false;
+    document.body.classList.add('thumbs-off');
+  }
 }
 
 // ─── Theme ───
@@ -773,7 +893,11 @@ async function analyze() {
 
       if (currentMode === 'all') {
         setProgress(95, 'Scoring items...');
-        scoredItems = allNfts.map(item => scoreItem(item, traitCounts, totalSupply, thresholds, points));
+        const allTraitTypes = buildTraitTypes(traitCounts);
+        const scoreMissing = document.getElementById('scoreMissing').checked;
+        cachedFetchData = { items: allNfts, traitCounts, totalSupply, thresholds, points, allTraitTypes, slug, chain, contractAddress };
+        populateWeightsPanel(allTraitTypes);
+        scoredItems = allNfts.map(item => scoreItem(item, traitCounts, totalSupply, thresholds, points, allTraitTypes, scoreMissing));
         finishAnalysis(scoredItems, totalSupply, slug, chain, contractAddress, thresholds, points);
         return;
       }
@@ -791,7 +915,11 @@ async function analyze() {
     if (items.length === 0) throw new Error('No items found. The collection may have no active listings.');
 
     setProgress(95, 'Scoring items...');
-    scoredItems = items.map(item => scoreItem(item, traitCounts, totalSupply, thresholds, points));
+    const allTraitTypes = buildTraitTypes(traitCounts);
+    const scoreMissing = document.getElementById('scoreMissing').checked;
+    cachedFetchData = { items, traitCounts, totalSupply, thresholds, points, allTraitTypes, slug, chain, contractAddress };
+    populateWeightsPanel(allTraitTypes);
+    scoredItems = items.map(item => scoreItem(item, traitCounts, totalSupply, thresholds, points, allTraitTypes, scoreMissing));
     finishAnalysis(scoredItems, totalSupply, slug, chain, contractAddress, thresholds, points);
 
   } catch (e) {
@@ -833,6 +961,7 @@ function finishAnalysis(items, totalSupply, slug, chain, contractAddress, thresh
 
   setProgress(100, 'Done!');
   renderResults(items, totalSupply, slug, chain, contractAddress, thresholds, points, minScore, maxScore);
+  encodeStateToURL();
 }
 
 function showCollectionInfo(colData, totalSupply) {
@@ -926,24 +1055,90 @@ async function fetchAllItems(slug, apiKey, totalSupply) {
   return items;
 }
 
+// ─── Trait Weights ───
+function toggleWeightsPanel() {
+  const content = document.getElementById('weightsContent');
+  const icon = document.getElementById('weightsToggleIcon');
+  const open = content.style.display === 'none';
+  content.style.display = open ? 'block' : 'none';
+  icon.innerHTML = open ? '&#9662;' : '&#9656;';
+}
+
+function populateWeightsPanel(allTraitTypes) {
+  document.getElementById('weightsPanel').style.display = '';
+  const list = document.getElementById('weightsList');
+  list.innerHTML = '';
+  for (const type of [...allTraitTypes].sort()) {
+    const weight = traitWeights.get(type) || 1.0;
+    const el = document.createElement('div');
+    el.style.cssText = 'display:flex; align-items:center; gap:4px; padding:4px 8px; border:1px solid var(--border); border-radius:6px; background:var(--bg); font-size:0.78rem;';
+    el.innerHTML = `<span style="color:var(--text-muted); max-width:120px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="${escapeHtml(type)}">${escapeHtml(type)}</span>
+      <input type="number" class="weight-input" data-type="${escapeHtml(type)}" value="${weight}" min="0" max="10" step="0.1" style="width:48px; background:var(--card-bg); border:1px solid var(--border); color:var(--text); padding:2px 4px; border-radius:4px; font-size:0.78rem; text-align:center;">
+      <span style="color:var(--text-muted); font-size:0.7rem;">x</span>`;
+    list.appendChild(el);
+  }
+}
+
+function reScoreWithWeights() {
+  if (!cachedFetchData) return;
+  // Read weights from inputs
+  document.querySelectorAll('.weight-input').forEach(input => {
+    traitWeights.set(input.dataset.type, parseFloat(input.value) || 1.0);
+  });
+  const d = cachedFetchData;
+  scoredItems = d.items.map(item => scoreItem(item, d.traitCounts, d.totalSupply, d.thresholds, d.points, d.allTraitTypes, document.getElementById('scoreMissing').checked));
+  finishAnalysis(scoredItems, d.totalSupply, d.slug, d.chain, d.contractAddress, d.thresholds, d.points);
+}
+
 // ─── Scoring ───
-function scoreItem(item, traitCounts, totalSupply, thresholds, points) {
+function buildTraitTypes(traitCounts) {
+  const types = new Set();
+  for (const key of Object.keys(traitCounts)) {
+    const type = key.split('::')[0];
+    if (!type.startsWith('_')) types.add(type);
+  }
+  return types;
+}
+
+function classifyTrait(pct, thresholds, points) {
+  for (let i = 0; i < thresholds.length; i++) {
+    if (pct < thresholds[i]) return { tier: activeTiers[i]?.name || ('tier' + i), pts: points[i] };
+  }
+  return { tier: 'common', pts: 0 };
+}
+
+function scoreItem(item, traitCounts, totalSupply, thresholds, points, allTraitTypes, scoreMissing) {
   let totalScore = 0;
   const traitScores = [];
   for (const trait of item.traits) {
     const key = `${trait.type}::${trait.value}`;
     const count = traitCounts[key] || 0;
     const pct = totalSupply > 0 ? (count / totalSupply) * 100 : 0;
-    let tier = 'common', pts = 0;
-    for (let i = 0; i < thresholds.length; i++) {
-      if (pct < thresholds[i]) {
-        tier = activeTiers[i]?.name || ('tier' + i);
-        pts = points[i];
-        break;
-      }
-    }
+    let { tier, pts } = classifyTrait(pct, thresholds, points);
+    const weight = traitWeights.get(trait.type) || 1.0;
+    pts = Math.round(pts * weight);
     totalScore += pts;
     traitScores.push({ type: trait.type, value: trait.value, count, pct: pct.toFixed(2), tier, points: pts });
+  }
+
+  // Score missing traits
+  if (scoreMissing && allTraitTypes) {
+    const itemTypes = new Set(item.traits.filter(t => !t.type.startsWith('_')).map(t => t.type));
+    for (const type of allTraitTypes) {
+      if (!itemTypes.has(type)) {
+        let presentCount = 0;
+        for (const [key, count] of Object.entries(traitCounts)) {
+          if (key.startsWith(type + '::')) presentCount += count;
+        }
+        const missingCount = totalSupply - presentCount;
+        const pct = totalSupply > 0 ? (missingCount / totalSupply) * 100 : 0;
+        let { tier, pts } = classifyTrait(pct, thresholds, points);
+        const weight = traitWeights.get(type) || 1.0;
+        pts = Math.round(pts * weight);
+        totalScore += pts;
+        traitScores.push({ type, value: '[None]', count: missingCount, pct: pct.toFixed(2), tier, points: pts });
+      }
+    }
   }
   // Build per-tier counts
   const tierCounts = {};
@@ -967,10 +1162,78 @@ function renderResults(items, totalSupply, slug, chain, contractAddress, thresho
   document.getElementById('statAvg').textContent = Math.round(scores.reduce((s, v) => s + v, 0) / scores.length);
   document.getElementById('statLow').textContent = Math.min(...scores);
   document.getElementById('statSupply').textContent = totalSupply;
+  const listedPrices = items.filter(i => i.price != null && i.price > 0).map(i => i.price);
+  const floorWrap = document.getElementById('statFloorWrap');
+  if (listedPrices.length > 0) {
+    document.getElementById('statFloor').textContent = formatPrice(Math.min(...listedPrices)) + ' ETH';
+    floorWrap.style.display = '';
+  } else { floorWrap.style.display = 'none'; }
   document.getElementById('resultsHeader').classList.add('visible');
 
-  renderCards(items, totalSupply, chain, contractAddress, minScore, maxScore);
-  renderTable(items, totalSupply, chain, contractAddress, minScore, maxScore);
+  renderParams = { totalSupply, chain, contractAddress, minScore, maxScore };
+  displayCount = PAGE_SIZE;
+  filteredItems = null;
+  renderHistogram(items);
+  rerenderCurrentView();
+}
+
+function renderHistogram(items) {
+  const el = document.getElementById('histogram');
+  if (items.length < 3) { el.innerHTML = ''; return; }
+  const scores = items.map(i => i.totalScore);
+  const min = Math.min(...scores), max = Math.max(...scores);
+  if (min === max) { el.innerHTML = ''; return; }
+  const BINS = Math.min(12, max - min + 1);
+  const binWidth = (max - min) / BINS;
+  const bins = Array(BINS).fill(0);
+  for (const s of scores) {
+    const idx = Math.min(Math.floor((s - min) / binWidth), BINS - 1);
+    bins[idx]++;
+  }
+  const maxCount = Math.max(...bins);
+  const W = 400, H = 50, gap = 2;
+  const barW = (W - gap * (BINS - 1)) / BINS;
+  const rects = bins.map((count, i) => {
+    const h = maxCount > 0 ? (count / maxCount) * H : 0;
+    const x = i * (barW + gap);
+    const ratio = i / (BINS - 1 || 1);
+    const color = ratio < 0.33 ? 'var(--score-low)' : ratio < 0.66 ? 'var(--score-mid)' : 'var(--score-high)';
+    const lo = Math.round(min + i * binWidth), hi = Math.round(min + (i + 1) * binWidth);
+    return `<rect x="${x}" y="${H - h}" width="${barW}" height="${h}" fill="${color}" rx="2"><title>Score ${lo}-${hi}: ${count} items</title></rect>`;
+  }).join('');
+  el.innerHTML = `<svg viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" style="max-width:100%;">${rects}</svg>`;
+}
+
+function getDisplayItems() {
+  return filteredItems || scoredItems;
+}
+
+function rerenderCurrentView() {
+  const items = getDisplayItems();
+  const p = renderParams;
+  const slice = items.slice(0, displayCount);
+  renderCards(slice, p.totalSupply, p.chain, p.contractAddress, p.minScore, p.maxScore);
+  renderTable(slice, p.totalSupply, p.chain, p.contractAddress, p.minScore, p.maxScore);
+  updateShowMore();
+}
+
+function showMore() {
+  displayCount += PAGE_SIZE;
+  rerenderCurrentView();
+}
+
+function updateShowMore() {
+  const items = getDisplayItems();
+  const wrap = document.getElementById('showMoreWrap');
+  const count = document.getElementById('showMoreCount');
+  if (displayCount < items.length) {
+    wrap.style.display = 'block';
+    count.textContent = `Showing ${Math.min(displayCount, items.length)} of ${items.length}` + (filteredItems ? ` (${scoredItems.length} total)` : '');
+  } else {
+    wrap.style.display = items.length > PAGE_SIZE ? 'block' : 'none';
+    count.textContent = items.length > PAGE_SIZE ? `Showing all ${items.length} items` : '';
+    wrap.querySelector('button').style.display = displayCount >= items.length ? 'none' : '';
+  }
 }
 
 function renderCards(items, totalSupply, chain, contractAddress, minScore, maxScore) {
@@ -1098,27 +1361,11 @@ function sortResults(field) {
 function toggleSortDir() { currentSortDir = currentSortDir === 'desc' ? 'asc' : 'desc'; applySorting(); }
 
 function applySorting() {
-  // Sort cards
-  const grid = document.getElementById('resultsGrid');
-  const cards = Array.from(grid.querySelectorAll('.item-card'));
-  const sortFn = makeSortFn(currentSort, currentSortDir);
-  cards.sort((a, b) => sortFn(a.dataset, b.dataset));
-  cards.forEach((card, idx) => { grid.appendChild(card); card.querySelector('.item-idx').textContent = '#' + (idx + 1); });
-
-  // Sort table rows
-  const tbody = document.querySelector('#resultsTable tbody');
-  if (!tbody) return;
-  const rowPairs = [];
-  const rows = Array.from(tbody.children);
-  for (let i = 0; i < rows.length; i += 2) {
-    if (rows[i] && rows[i + 1]) rowPairs.push([rows[i], rows[i + 1]]);
-  }
-  rowPairs.sort((a, b) => sortFn(a[0].dataset, b[0].dataset));
-  rowPairs.forEach(([main, expand], idx) => {
-    tbody.appendChild(main);
-    tbody.appendChild(expand);
-    main.querySelector('.tbl-idx').textContent = idx + 1;
-  });
+  const cmp = makeSortFn(currentSort, currentSortDir);
+  scoredItems.sort(cmp);
+  if (filteredItems) filteredItems.sort(cmp);
+  displayCount = PAGE_SIZE;
+  rerenderCurrentView();
 }
 
 function makeSortFn(field, dir) {
@@ -1131,14 +1378,43 @@ function makeSortFn(field, dir) {
     }
     let va, vb;
     switch (field) {
-      case 'score': va = +a.score; vb = +b.score; break;
-      case 'value': va = +a.value; vb = +b.value; break;
-      case 'price': va = +a.price; vb = +b.price; break;
-      case 'rarity': va = +a.rarity; vb = +b.rarity; break;
-      default: va = +a.score; vb = +b.score;
+      case 'score': va = a.totalScore; vb = b.totalScore; break;
+      case 'value': va = a.valueScore || 0; vb = b.valueScore || 0; break;
+      case 'price': va = a.price != null ? a.price : 999999; vb = b.price != null ? b.price : 999999; break;
+      case 'rarity': va = a.rarityRank || 9999; vb = b.rarityRank || 9999; break;
+      default: va = a.totalScore; vb = b.totalScore;
     }
     return dir === 'desc' ? vb - va : va - vb;
   };
+}
+
+// ─── Filtering ───
+function applyFilters() {
+  const search = (document.getElementById('filterSearch').value || '').toLowerCase().trim();
+  const minP = parseFloat(document.getElementById('filterPriceMin').value);
+  const maxP = parseFloat(document.getElementById('filterPriceMax').value);
+  const hasFilter = search || !isNaN(minP) || !isNaN(maxP);
+  if (!hasFilter) { filteredItems = null; displayCount = PAGE_SIZE; rerenderCurrentView(); return; }
+  filteredItems = scoredItems.filter(item => {
+    if (search) {
+      const hay = [item.name, item.owner || '', ...item.mainTraits.map(t => t.type + ' ' + t.value)].join(' ').toLowerCase();
+      if (!hay.includes(search)) return false;
+    }
+    if (!isNaN(minP) && (item.price == null || item.price < minP)) return false;
+    if (!isNaN(maxP) && (item.price == null || item.price > maxP)) return false;
+    return true;
+  });
+  displayCount = PAGE_SIZE;
+  rerenderCurrentView();
+}
+
+function clearFilters() {
+  document.getElementById('filterSearch').value = '';
+  document.getElementById('filterPriceMin').value = '';
+  document.getElementById('filterPriceMax').value = '';
+  filteredItems = null;
+  displayCount = PAGE_SIZE;
+  rerenderCurrentView();
 }
 
 // ─── CSV Export ───
@@ -1151,10 +1427,11 @@ function csvSafe(val) {
   return s;
 }
 function exportCSV() {
-  if (scoredItems.length === 0) return;
+  const exportItems = getDisplayItems();
+  if (exportItems.length === 0) return;
   const tierHeaders = activeTiers.map(t => t.name + ' Traits');
   const headers = ['Rank', 'Name', 'Token ID', 'Score', 'Value (pts/ETH)', 'Price', 'Currency', 'Owner', 'OS Rarity Rank', ...tierHeaders, 'Is Bargain', 'OpenSea URL'];
-  const rows = scoredItems.map((item, idx) => [
+  const rows = exportItems.map((item, idx) => [
     idx + 1, csvSafe(item.name), csvSafe(item.tokenId), item.totalScore,
     item.valueScore ?? '', item.price != null ? formatPrice(item.price) : '',
     csvSafe(item.currency), csvSafe(item.owner || ''), item.rarityRank || '',
@@ -1171,10 +1448,89 @@ function exportCSV() {
   URL.revokeObjectURL(url);
 }
 
+// ─── Shareable URL ───
+function encodeStateToURL() {
+  const params = new URLSearchParams();
+  const slug = parseSlug(document.getElementById('collectionInput').value);
+  if (slug) params.set('slug', slug);
+  params.set('mode', currentMode);
+  params.set('tierMode', currentTierMode);
+  if (currentTierMode === 'standard') {
+    params.set('t', [
+      document.getElementById('thresh1').value,
+      document.getElementById('thresh2').value,
+      document.getElementById('thresh3').value
+    ].join(','));
+    params.set('p', [
+      document.getElementById('points1').value,
+      document.getElementById('points2').value,
+      document.getElementById('points3').value
+    ].join(','));
+  } else {
+    const custom = getCustomTiers();
+    params.set('ct', JSON.stringify(custom.map(c => ({
+      n: c.name, c: c.color, t: c.threshold, p: c.points
+    }))));
+  }
+  if (document.getElementById('scoreMissing').checked) params.set('miss', '1');
+  history.replaceState(null, '', '?' + params.toString());
+}
+
+function loadStateFromURL() {
+  const params = new URLSearchParams(window.location.search);
+  if (!params.has('slug') && !params.has('tierMode')) return;
+
+  if (params.has('slug')) {
+    document.getElementById('collectionInput').value = params.get('slug');
+  }
+  if (params.has('mode')) {
+    setMode(params.get('mode') === 'all' ? 'all' : 'listed');
+  }
+  if (params.has('tierMode')) {
+    const tm = params.get('tierMode') === 'custom' ? 'custom' : 'standard';
+    setTierMode(tm);
+    if (tm === 'standard' && params.has('t') && params.has('p')) {
+      const t = params.get('t').split(',').map(Number);
+      const p = params.get('p').split(',').map(Number);
+      if (t.length === 3) {
+        document.getElementById('thresh1').value = t[0];
+        document.getElementById('thresh2').value = t[1];
+        document.getElementById('thresh3').value = t[2];
+        document.getElementById('thresh1_upper').value = t[0];
+        document.getElementById('thresh2_upper').value = t[1];
+      }
+      if (p.length === 3) {
+        document.getElementById('points1').value = p[0];
+        document.getElementById('points2').value = p[1];
+        document.getElementById('points3').value = p[2];
+      }
+    }
+    if (tm === 'custom' && params.has('ct')) {
+      try {
+        const tiers = JSON.parse(params.get('ct'));
+        if (Array.isArray(tiers) && tiers.length > 0 && tiers.length <= 10) {
+          document.getElementById('customTiers').innerHTML = '';
+          tiers.forEach(t => addCustomTier(
+            String(t.n || 'Tier').slice(0, 20),
+            Number(t.t) || 0,
+            Number(t.p) || 0,
+            String(t.c || '#3498db')
+          ));
+        }
+      } catch {}
+    }
+  }
+  if (params.get('miss') === '1') {
+    document.getElementById('scoreMissing').checked = true;
+  }
+}
+
 // ─── Init ───
 loadTheme();
+loadThumbs();
 loadApiKey();
 loadLastCollection();
+loadStateFromURL();
 </script>
 
 </body>
