@@ -892,6 +892,8 @@ async function analyze() {
       console.log('Built trait counts from', allNfts.length, 'items,', Object.keys(traitCounts).length, 'unique trait pairs');
 
       if (currentMode === 'all') {
+        const priceMap = await fetchListingPrices(slug, apiKey, 55, 65);
+        applyListingPrices(allNfts, priceMap);
         await enrichItems(allNfts, chain, contractAddress, apiKey);
         await resolveOwnerNames(allNfts, apiKey);
         setProgress(95, 'Scoring items...');
@@ -910,8 +912,10 @@ async function analyze() {
       setProgress(70, 'Fetching active listings...');
       items = await fetchListedItems(slug, chain, contractAddress, apiKey);
     } else {
-      setProgress(25, 'Fetching all items...');
+      setProgress(15, 'Fetching all items...');
       items = await fetchAllItems(slug, apiKey, totalSupply);
+      const priceMap = await fetchListingPrices(slug, apiKey, 55, 65);
+      applyListingPrices(items, priceMap);
       await enrichItems(items, chain, contractAddress, apiKey);
     }
 
@@ -981,8 +985,8 @@ function showCollectionInfo(colData, totalSupply) {
   el.classList.add('visible');
 }
 
-// ─── Fetch Listed Items ───
-async function fetchListedItems(slug, chain, contractAddress, apiKey) {
+// ─── Fetch Listing Prices ───
+async function fetchListingPrices(slug, apiKey, progressStart, progressEnd) {
   let listings = [];
   let next = null;
   let page = 0;
@@ -994,7 +998,7 @@ async function fetchListedItems(slug, chain, contractAddress, apiKey) {
     listings = listings.concat(data.listings || []);
     next = data.next || null;
     page++;
-    setProgress(25 + Math.min(page * 10, 30), `Fetched ${listings.length} listings...`);
+    setProgress(progressStart + Math.min(page * 3, progressEnd - progressStart), `Fetched ${listings.length} listings...`);
     if (next) await sleep(250);
   } while (next);
 
@@ -1006,6 +1010,22 @@ async function fetchListedItems(slug, chain, contractAddress, apiKey) {
     const currency = listing.price?.current?.currency || 'ETH';
     if (!tokenMap[tokenId] || price < tokenMap[tokenId].price) tokenMap[tokenId] = { tokenId, price, currency };
   }
+  return tokenMap;
+}
+
+function applyListingPrices(items, tokenMap) {
+  for (const item of items) {
+    const listing = tokenMap[item.tokenId];
+    if (listing) {
+      item.price = listing.price;
+      item.currency = listing.currency;
+    }
+  }
+}
+
+// ─── Fetch Listed Items ───
+async function fetchListedItems(slug, chain, contractAddress, apiKey) {
+  const tokenMap = await fetchListingPrices(slug, apiKey, 25, 55);
 
   const tokenIds = Object.keys(tokenMap);
   setProgress(55, `Found ${tokenIds.length} unique listed items. Fetching traits...`);
@@ -1053,7 +1073,7 @@ async function fetchAllItems(slug, apiKey, totalSupply) {
       traits: (nft.traits || []).map(t => ({ type: t.trait_type, value: String(t.value) }))
     })));
     next = data.next || null;
-    setProgress(25 + Math.min(Math.round((items.length / totalSupply) * 40), 40), `Fetched ${items.length}/${totalSupply} items...`);
+    setProgress(15 + Math.min(Math.round((items.length / totalSupply) * 40), 40), `Fetched ${items.length}/${totalSupply} items...`);
     if (next) await sleep(250);
   } while (next);
   return items;
