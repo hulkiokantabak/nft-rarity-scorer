@@ -1103,7 +1103,7 @@ async function resolveOwnerNames(items, apiKey) {
     }));
     setProgress(90 + Math.round((Math.min(i + batchSize, toResolve.length) / toResolve.length) * 5),
       `Resolving owner names (${Math.min(i + batchSize, toResolve.length)}/${toResolve.length})...`);
-    if (i + batchSize < batch.length) await sleep(200);
+    if (i + batchSize < toResolve.length) await sleep(200);
   }
   applyOwnerNames(items);
 }
