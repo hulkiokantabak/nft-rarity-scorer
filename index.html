@@ -1162,10 +1162,11 @@ function renderResults(items, totalSupply, slug, chain, contractAddress, thresho
   document.getElementById('statAvg').textContent = Math.round(scores.reduce((s, v) => s + v, 0) / scores.length);
   document.getElementById('statLow').textContent = Math.min(...scores);
   document.getElementById('statSupply').textContent = totalSupply;
-  const listedPrices = items.filter(i => i.price != null && i.price > 0).map(i => i.price);
+  const listedItems = items.filter(i => i.price != null && i.price > 0);
   const floorWrap = document.getElementById('statFloorWrap');
-  if (listedPrices.length > 0) {
-    document.getElementById('statFloor').textContent = formatPrice(Math.min(...listedPrices)) + ' ETH';
+  if (listedItems.length > 0) {
+    const floorItem = listedItems.reduce((a, b) => a.price <= b.price ? a : b);
+    document.getElementById('statFloor').textContent = formatPrice(floorItem.price) + ' ' + (floorItem.currency || 'ETH');
     floorWrap.style.display = '';
   } else { floorWrap.style.display = 'none'; }
   document.getElementById('resultsHeader').classList.add('visible');
@@ -1226,20 +1227,24 @@ function updateShowMore() {
   const items = getDisplayItems();
   const wrap = document.getElementById('showMoreWrap');
   const count = document.getElementById('showMoreCount');
+  const btn = wrap.querySelector('button');
   if (displayCount < items.length) {
     wrap.style.display = 'block';
+    btn.style.display = '';
     count.textContent = `Showing ${Math.min(displayCount, items.length)} of ${items.length}` + (filteredItems ? ` (${scoredItems.length} total)` : '');
+  } else if (items.length > PAGE_SIZE) {
+    wrap.style.display = 'block';
+    btn.style.display = 'none';
+    count.textContent = `Showing all ${items.length} items`;
   } else {
-    wrap.style.display = items.length > PAGE_SIZE ? 'block' : 'none';
-    count.textContent = items.length > PAGE_SIZE ? `Showing all ${items.length} items` : '';
-    wrap.querySelector('button').style.display = displayCount >= items.length ? 'none' : '';
+    wrap.style.display = 'none';
   }
 }
 
 function renderCards(items, totalSupply, chain, contractAddress, minScore, maxScore) {
   const grid = document.getElementById('resultsGrid');
   grid.innerHTML = items.map((item, idx) => `
-    <div class="item-card${item.isBargain ? ' bargain' : ''}" data-score="${item.totalScore}" data-price="${item.price != null ? item.price : 999999}" data-rarity="${item.rarityRank || 9999}" data-value="${item.valueScore || 0}" data-owner="${escapeHtml(item.owner || '')}">
+    <div class="item-card${item.isBargain ? ' bargain' : ''}">
       <div class="item-header">
         <div class="item-header-left">
           ${item.image && item.image.startsWith('https://') ? `<img class="item-thumb" src="${escapeHtml(item.image)}" alt="" loading="lazy">` : ''}
@@ -1307,7 +1312,7 @@ function renderTable(items, totalSupply, chain, contractAddress, minScore, maxSc
     </tr></thead>
     <tbody>
     ${items.map((item, idx) => `
-      <tr class="expandable${item.isBargain ? ' bargain-row' : ''}" data-score="${item.totalScore}" data-price="${item.price != null ? item.price : 999999}" data-rarity="${item.rarityRank || 9999}" data-value="${item.valueScore || 0}" data-owner="${escapeHtml(item.owner || '')}" onclick="toggleTableRow(this)">
+      <tr class="expandable${item.isBargain ? ' bargain-row' : ''}" onclick="toggleTableRow(this)">
         <td><span class="tbl-idx">${idx + 1}</span></td>
         <td>${item.image && item.image.startsWith('https://') ? `<img class="tbl-thumb" src="${escapeHtml(item.image)}" alt="" loading="lazy">` : ''}</td>
         <td class="score-cell" style="color:${item.scoreColor}">${item.totalScore}</td>
@@ -1429,14 +1434,14 @@ function csvSafe(val) {
 function exportCSV() {
   const exportItems = getDisplayItems();
   if (exportItems.length === 0) return;
-  const tierHeaders = activeTiers.map(t => t.name + ' Traits');
+  const tierHeaders = activeTiers.map(t => csvSafe(t.name + ' Traits'));
   const headers = ['Rank', 'Name', 'Token ID', 'Score', 'Value (pts/ETH)', 'Price', 'Currency', 'Owner', 'OS Rarity Rank', ...tierHeaders, 'Is Bargain', 'OpenSea URL'];
   const rows = exportItems.map((item, idx) => [
     idx + 1, csvSafe(item.name), csvSafe(item.tokenId), item.totalScore,
     item.valueScore ?? '', item.price != null ? formatPrice(item.price) : '',
     csvSafe(item.currency), csvSafe(item.owner || ''), item.rarityRank || '',
     ...activeTiers.map(t => item.tierCounts[t.name] || 0),
-    item.isBargain ? 'Yes' : '', csvSafe(`https://opensea.io/assets/${lastChain}/${lastContract}/${item.tokenId}`)
+    item.isBargain ? 'Yes' : '', csvSafe(`https://opensea.io/assets/${encodeURIComponent(lastChain)}/${encodeURIComponent(lastContract)}/${encodeURIComponent(item.tokenId)}`)
   ]);
   const csv = [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
   const blob = new Blob([csv], { type: 'text/csv' });
