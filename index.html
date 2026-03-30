@@ -892,6 +892,7 @@ async function analyze() {
       console.log('Built trait counts from', allNfts.length, 'items,', Object.keys(traitCounts).length, 'unique trait pairs');
 
       if (currentMode === 'all') {
+        await enrichItems(allNfts, chain, contractAddress, apiKey);
         await resolveOwnerNames(allNfts, apiKey);
         setProgress(95, 'Scoring items...');
         const allTraitTypes = buildTraitTypes(traitCounts);
@@ -909,8 +910,9 @@ async function analyze() {
       setProgress(70, 'Fetching active listings...');
       items = await fetchListedItems(slug, chain, contractAddress, apiKey);
     } else {
-      setProgress(70, 'Fetching all items...');
+      setProgress(25, 'Fetching all items...');
       items = await fetchAllItems(slug, apiKey, totalSupply);
+      await enrichItems(items, chain, contractAddress, apiKey);
     }
 
     if (items.length === 0) throw new Error('No items found. The collection may have no active listings.');
@@ -1051,7 +1053,7 @@ async function fetchAllItems(slug, apiKey, totalSupply) {
       traits: (nft.traits || []).map(t => ({ type: t.trait_type, value: String(t.value) }))
     })));
     next = data.next || null;
-    setProgress(25 + Math.min(Math.round((items.length / totalSupply) * 65), 65), `Fetched ${items.length}/${totalSupply} items...`);
+    setProgress(25 + Math.min(Math.round((items.length / totalSupply) * 40), 40), `Fetched ${items.length}/${totalSupply} items...`);
     if (next) await sleep(250);
   } while (next);
   return items;
@@ -1094,6 +1096,25 @@ function applyOwnerNames(items) {
       const name = ownerNameCache.get(item.owner);
       if (name) item.ownerName = name;
     }
+  }
+}
+
+// ─── Enrich All-Mode Items (owner + rarity) ───
+async function enrichItems(items, chain, contractAddress, apiKey) {
+  const batchSize = 10;
+  for (let i = 0; i < items.length; i += batchSize) {
+    const batch = items.slice(i, i + batchSize);
+    await Promise.allSettled(batch.map(async (item) => {
+      try {
+        const data = await apiGet(`https://api.opensea.io/api/v2/chain/${encodeURIComponent(chain)}/contract/${encodeURIComponent(contractAddress)}/nfts/${encodeURIComponent(item.tokenId)}`, apiKey);
+        const nft = data.nft || {};
+        if (!item.owner) item.owner = (nft.owners || [])[0]?.address || null;
+        if (!item.rarity) item.rarity = nft.rarity || null;
+      } catch {}
+    }));
+    setProgress(65 + Math.round((Math.min(i + batchSize, items.length) / items.length) * 25),
+      `Enriching item details (${Math.min(i + batchSize, items.length)}/${items.length})...`);
+    if (i + batchSize < items.length) await sleep(200);
   }
 }
 
