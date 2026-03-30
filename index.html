@@ -282,8 +282,9 @@
       <span class="tier-sep">pts</span>
     </div>
   </div>
-  <div style="margin-top: 16px; text-align: center;">
+  <div style="margin-top: 16px; text-align: center; display: flex; gap: 10px; justify-content: center;">
     <button class="btn-analyze" id="analyzeBtn" onclick="analyze()">Analyze Collection</button>
+    <button class="btn-analyze" id="cancelBtn" onclick="cancelAnalysis()" style="background: linear-gradient(135deg, var(--danger), #c0392b); display: none;">Cancel</button>
   </div>
 </div>
 
@@ -397,22 +398,61 @@ function setProgress(pct, text) {
 function showProgress() { document.getElementById('progress').classList.add('visible'); }
 function hideProgress() { document.getElementById('progress').classList.remove('visible'); }
 
-async function apiGet(url, apiKey) {
-  const res = await fetch(url, {
-    headers: { 'X-API-KEY': apiKey, 'Accept': 'application/json' },
-    signal: abortController?.signal
-  });
-  if (!res.ok) {
-    const body = await res.text().catch(() => '');
-    throw new Error(`API ${res.status}: ${body.substring(0, 200)}`);
+async function apiGet(url, apiKey, retries = 3) {
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    const res = await fetch(url, {
+      headers: { 'X-API-KEY': apiKey, 'Accept': 'application/json' },
+      signal: abortController?.signal
+    });
+    if (res.status === 429 && attempt < retries) {
+      const wait = Math.pow(2, attempt + 1) * 1000;
+      console.warn(`Rate limited (429), retrying in ${wait}ms... (attempt ${attempt + 1}/${retries})`);
+      await sleep(wait);
+      continue;
+    }
+    if (!res.ok) {
+      const body = await res.text().catch(() => '');
+      throw new Error(`API ${res.status}: ${body.substring(0, 200)}`);
+    }
+    return res.json();
   }
-  return res.json();
 }
 
 function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
 
+function parsePrice(listing) {
+  try {
+    const val = listing.price?.current?.value ?? '0';
+    const decimals = listing.price?.current?.decimals ?? 18;
+    const str = String(val).padStart(decimals + 1, '0');
+    const intPart = str.slice(0, -decimals) || '0';
+    const fracPart = str.slice(-decimals).replace(/0+$/, '');
+    return parseFloat(intPart + (fracPart ? '.' + fracPart : ''));
+  } catch (e) {
+    return 0;
+  }
+}
+
+function formatPrice(price) {
+  if (price == null) return null;
+  if (price >= 1) return parseFloat(price.toFixed(4));
+  return parseFloat(price.toPrecision(4));
+}
+
+let isRunning = false;
+
+function cancelAnalysis() {
+  if (abortController) abortController.abort();
+  isRunning = false;
+  document.getElementById('analyzeBtn').disabled = false;
+  document.getElementById('analyzeBtn').textContent = 'Analyze Collection';
+  document.getElementById('cancelBtn').style.display = 'none';
+  hideProgress();
+}
+
 // ─── Main Analysis ───
 async function analyze() {
+  if (isRunning) return;
   hideError();
   const apiKey = getApiKey();
   if (!apiKey) { showError('Please enter your OpenSea API key first.'); return; }
@@ -421,19 +461,25 @@ async function analyze() {
   if (!slug) { showError('Please enter a valid OpenSea collection URL or slug.'); return; }
 
   const thresholds = [
-    parseFloat(document.getElementById('thresh1').value),
-    parseFloat(document.getElementById('thresh2').value),
-    parseFloat(document.getElementById('thresh3').value)
+    parseFloat(document.getElementById('thresh1').value) || 2,
+    parseFloat(document.getElementById('thresh2').value) || 5,
+    parseFloat(document.getElementById('thresh3').value) || 20
   ];
+  if (thresholds[0] >= thresholds[1] || thresholds[1] >= thresholds[2]) {
+    showError('Thresholds must be in ascending order (e.g., 2 < 5 < 20).');
+    return;
+  }
   const points = [
-    parseInt(document.getElementById('points1').value),
-    parseInt(document.getElementById('points2').value),
-    parseInt(document.getElementById('points3').value)
+    Math.max(0, parseInt(document.getElementById('points1').value) || 7),
+    Math.max(0, parseInt(document.getElementById('points2').value) || 3),
+    Math.max(0, parseInt(document.getElementById('points3').value) || 1)
   ];
 
+  isRunning = true;
   const btn = document.getElementById('analyzeBtn');
   btn.disabled = true;
   btn.textContent = 'Analyzing...';
+  document.getElementById('cancelBtn').style.display = 'inline-block';
   abortController = new AbortController();
   showProgress();
   document.getElementById('resultsGrid').innerHTML = '';
@@ -475,7 +521,7 @@ async function analyze() {
     // Step 2b: If no trait counts, fetch ALL collection items to build the rarity table
     if (!hasTraitCounts) {
       setProgress(15, 'Building trait rarity table from all items...');
-      const allNfts = await fetchAllItems(slug, apiKey, totalSupply, false, {});
+      const allNfts = await fetchAllItems(slug, apiKey, totalSupply);
       traitCounts = {};
       for (const nft of allNfts) {
         for (const t of nft.traits) {
@@ -500,10 +546,10 @@ async function analyze() {
     let items = [];
     if (currentMode === 'listed') {
       setProgress(70, 'Fetching active listings...');
-      items = await fetchListedItems(slug, chain, contractAddress, apiKey, totalSupply, true, traitCounts);
+      items = await fetchListedItems(slug, chain, contractAddress, apiKey);
     } else {
       setProgress(70, 'Fetching all items...');
-      items = await fetchAllItems(slug, apiKey, totalSupply, true, traitCounts);
+      items = await fetchAllItems(slug, apiKey, totalSupply);
     }
 
     if (items.length === 0) {
@@ -526,14 +572,16 @@ async function analyze() {
       showError(e.message);
     }
   } finally {
+    isRunning = false;
     btn.disabled = false;
     btn.textContent = 'Analyze Collection';
+    document.getElementById('cancelBtn').style.display = 'none';
     setTimeout(hideProgress, 1000);
   }
 }
 
 // ─── Fetch Listed Items ───
-async function fetchListedItems(slug, chain, contractAddress, apiKey, totalSupply, hasTraitCounts, traitCounts) {
+async function fetchListedItems(slug, chain, contractAddress, apiKey) {
   // Get all active listings
   let listings = [];
   let next = null;
@@ -557,9 +605,7 @@ async function fetchListedItems(slug, chain, contractAddress, apiKey, totalSuppl
   for (const listing of listings) {
     const tokenId = listing.protocol_data?.parameters?.offer?.[0]?.identifierOrCriteria;
     if (!tokenId) continue;
-    const priceWei = BigInt(listing.price?.current?.value || '0');
-    const decimals = listing.price?.current?.decimals || 18;
-    const price = Number(priceWei) / Math.pow(10, decimals);
+    const price = parsePrice(listing);
     const currency = listing.price?.current?.currency || 'ETH';
 
     if (!tokenMap[tokenId] || price < tokenMap[tokenId].price) {
@@ -610,7 +656,7 @@ async function fetchListedItems(slug, chain, contractAddress, apiKey, totalSuppl
 }
 
 // ─── Fetch All Items ───
-async function fetchAllItems(slug, apiKey, totalSupply, hasTraitCounts, traitCounts) {
+async function fetchAllItems(slug, apiKey, totalSupply) {
   let items = [];
   let next = null;
   let page = 0;
@@ -702,12 +748,12 @@ function renderResults(items, totalSupply, slug, chain, contractAddress, thresho
 function renderCards(items, totalSupply, chain, contractAddress, thresholds, points) {
   const grid = document.getElementById('resultsGrid');
   grid.innerHTML = items.map((item, idx) => `
-    <div class="item-card" data-score="${item.totalScore}" data-price="${item.price || 0}" data-rarity="${item.rarityRank || 9999}" data-name="${escapeHtml(item.name)}">
+    <div class="item-card" data-score="${item.totalScore}" data-price="${item.price != null ? item.price : 999999}" data-rarity="${item.rarityRank || 9999}">
       <div class="item-header">
         <div>
           <div class="item-name"><span class="item-idx">#${idx + 1}</span> ${escapeHtml(item.name)}</div>
           <div class="item-rank">OpenSea Rarity Rank: ${item.rarityRank || 'N/A'} / ${totalSupply}</div>
-          <div class="item-price">${item.price != null ? `<span class="eth">${item.price} ${item.currency}</span>` : '<span style="color:var(--text-muted)">Not listed</span>'}</div>
+          <div class="item-price">${item.price != null ? `<span class="eth">${formatPrice(item.price)} ${item.currency}</span>` : '<span style="color:var(--text-muted)">Not listed</span>'}</div>
         </div>
         <div class="item-score">
           ${item.totalScore}
@@ -721,6 +767,7 @@ function renderCards(items, totalSupply, chain, contractAddress, thresholds, poi
       <div class="traits-section">
         <div class="traits-label">Main Traits</div>
         <div class="traits-grid">
+          ${item.mainTraits.length === 0 ? '<span style="color:var(--text-muted); font-size:0.8rem;">No traits available</span>' : ''}
           ${item.mainTraits.sort((a, b) => b.points - a.points || a.pct - b.pct).map(t => `
             <div class="trait-tag trait-${t.tier}">
               <span class="trait-type">${escapeHtml(t.type)}</span>
