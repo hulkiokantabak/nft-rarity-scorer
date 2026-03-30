@@ -1,11 +1,11 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-theme="dark">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>NFT Rarity Scorer</title>
 <style>
-  :root {
+  :root, [data-theme="dark"] {
     --orange: #ff8c00;
     --purple: #9b59b6;
     --blue: #3498db;
@@ -19,19 +19,50 @@
     --accent: #3498db;
     --danger: #e74c3c;
     --success: #2ecc71;
+    --bargain-border: rgba(46,204,113,0.5);
+    --bargain-bg: rgba(46,204,113,0.04);
+    --sticky-bg: #1a1a2eee;
+    --table-hover: rgba(52,152,219,0.08);
+    --score-high: #2ecc71;
+    --score-mid: #f1c40f;
+    --score-low: #e74c3c;
+  }
+  [data-theme="light"] {
+    --bg: #f0f2f5;
+    --card-bg: #ffffff;
+    --panel-bg: #f8f9fa;
+    --text: #1a1a2e;
+    --text-muted: #6b7b8d;
+    --border: #d0d7de;
+    --accent: #2980b9;
+    --danger: #c0392b;
+    --success: #27ae60;
+    --bargain-border: rgba(39,174,96,0.5);
+    --bargain-bg: rgba(39,174,96,0.04);
+    --sticky-bg: #f0f2f5ee;
+    --table-hover: rgba(52,152,219,0.06);
+    --score-high: #27ae60;
+    --score-mid: #d4ac0d;
+    --score-low: #c0392b;
   }
   * { box-sizing: border-box; margin: 0; padding: 0; }
-  body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; }
+  body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; transition: background 0.3s, color 0.3s; }
 
   /* Header */
-  .app-header { text-align: center; padding: 24px 20px 12px; }
+  .app-header { text-align: center; padding: 20px 20px 8px; position: relative; }
   .app-header h1 { font-size: 1.6rem; margin-bottom: 4px; }
   .app-header .subtitle { color: var(--text-muted); font-size: 0.82rem; }
+  .theme-toggle {
+    position: absolute; top: 20px; right: 20px; background: var(--card-bg); border: 1px solid var(--border);
+    color: var(--text); width: 36px; height: 36px; border-radius: 50%; cursor: pointer;
+    font-size: 1.1rem; display: flex; align-items: center; justify-content: center; transition: all 0.2s;
+  }
+  .theme-toggle:hover { border-color: var(--accent); }
 
   /* Panels */
   .panel {
     background: var(--card-bg); border: 1px solid var(--border); border-radius: 10px;
-    padding: 16px 20px; margin: 12px auto; max-width: 960px;
+    padding: 16px 20px; margin: 10px auto; max-width: 960px; transition: background 0.3s, border-color 0.3s;
   }
   .panel-title {
     font-size: 0.75rem; text-transform: uppercase; letter-spacing: 1px;
@@ -45,20 +76,16 @@
   .form-group input, .form-group select {
     background: var(--bg); border: 1px solid var(--border); color: var(--text);
     padding: 8px 12px; border-radius: 6px; font-size: 0.88rem;
-    outline: none; transition: border-color 0.2s;
+    outline: none; transition: border-color 0.2s, background 0.3s;
   }
   .form-group input:focus, .form-group select:focus { border-color: var(--accent); }
   .form-group input::placeholder { color: var(--text-muted); opacity: 0.6; }
-  .form-group.narrow { flex: 0 0 90px; min-width: 80px; }
   .form-group.wide { flex: 3; min-width: 300px; }
 
   /* API key */
   .api-key-row { display: flex; gap: 8px; align-items: flex-end; }
   .api-key-row .form-group { flex: 1; }
-  .api-key-row .key-status {
-    font-size: 0.75rem; padding: 9px 12px; border-radius: 6px;
-    white-space: nowrap; align-self: flex-end;
-  }
+  .api-key-row .key-status { font-size: 0.75rem; padding: 9px 12px; border-radius: 6px; white-space: nowrap; }
   .key-saved { color: var(--success); }
   .key-missing { color: var(--danger); }
 
@@ -70,8 +97,7 @@
   }
   .tier-group input {
     width: 50px; background: var(--bg); border: 1px solid var(--border);
-    color: var(--text); padding: 4px 6px; border-radius: 4px; font-size: 0.85rem;
-    text-align: center;
+    color: var(--text); padding: 4px 6px; border-radius: 4px; font-size: 0.85rem; text-align: center;
   }
   .tier-group input:focus { border-color: var(--accent); outline: none; }
   .tier-group .tier-label { font-size: 0.82rem; font-weight: 600; }
@@ -93,124 +119,129 @@
   .mode-btn:hover:not(.active) { background: var(--panel-bg); }
 
   /* Buttons */
-  .btn-analyze {
-    background: linear-gradient(135deg, var(--accent), #2980b9); color: #fff;
-    border: none; padding: 10px 32px; border-radius: 8px; font-size: 1rem;
-    font-weight: 600; cursor: pointer; transition: opacity 0.2s; letter-spacing: 0.5px;
-  }
+  .btn { border: none; padding: 8px 16px; border-radius: 6px; font-size: 0.85rem; font-weight: 600; cursor: pointer; transition: opacity 0.2s; }
+  .btn-analyze { background: linear-gradient(135deg, var(--accent), #2980b9); color: #fff; padding: 10px 32px; border-radius: 8px; font-size: 1rem; letter-spacing: 0.5px; }
   .btn-analyze:hover { opacity: 0.9; }
   .btn-analyze:disabled { opacity: 0.4; cursor: not-allowed; }
+  .btn-cancel { background: linear-gradient(135deg, var(--danger), #c0392b); color: #fff; }
+  .btn-secondary { background: var(--card-bg); border: 1px solid var(--border); color: var(--text); }
+  .btn-secondary:hover { border-color: var(--accent); }
 
   /* Progress */
-  .progress-container { display: none; margin: 16px auto; max-width: 960px; }
+  .progress-container { display: none; margin: 14px auto; max-width: 960px; }
   .progress-container.visible { display: block; }
-  .progress-bar-bg {
-    background: var(--bg); border-radius: 8px; height: 8px; overflow: hidden;
-    border: 1px solid var(--border);
-  }
-  .progress-bar-fill {
-    height: 100%; background: linear-gradient(90deg, var(--accent), var(--success));
-    border-radius: 8px; transition: width 0.3s ease; width: 0%;
-  }
-  .progress-text {
-    font-size: 0.78rem; color: var(--text-muted); margin-top: 6px; text-align: center;
-  }
+  .progress-bar-bg { background: var(--bg); border-radius: 8px; height: 8px; overflow: hidden; border: 1px solid var(--border); }
+  .progress-bar-fill { height: 100%; background: linear-gradient(90deg, var(--accent), var(--success)); border-radius: 8px; transition: width 0.3s ease; width: 0%; }
+  .progress-text { font-size: 0.78rem; color: var(--text-muted); margin-top: 6px; text-align: center; }
 
   /* Error */
-  .error-msg {
-    background: rgba(231,76,60,0.12); border: 1px solid var(--danger); color: var(--danger);
-    padding: 12px 16px; border-radius: 8px; margin: 12px auto; max-width: 960px;
-    font-size: 0.88rem; display: none;
-  }
+  .error-msg { background: rgba(231,76,60,0.12); border: 1px solid var(--danger); color: var(--danger); padding: 12px 16px; border-radius: 8px; margin: 12px auto; max-width: 960px; font-size: 0.88rem; display: none; }
   .error-msg.visible { display: block; }
 
-  /* Stats bar */
-  .stats-bar {
-    display: none; gap: 16px; justify-content: center; margin: 16px auto;
-    max-width: 960px; flex-wrap: wrap;
-  }
-  .stats-bar.visible { display: flex; }
-  .stat { text-align: center; padding: 8px 20px; }
-  .stat .num { font-size: 1.5rem; font-weight: 700; }
-  .stat .lbl { font-size: 0.72rem; color: var(--text-muted); text-transform: uppercase; }
+  /* Collection info */
+  .collection-info { display: none; align-items: center; gap: 14px; margin: 14px auto; max-width: 960px; padding: 12px 16px; background: var(--card-bg); border: 1px solid var(--border); border-radius: 10px; }
+  .collection-info.visible { display: flex; }
+  .collection-info img { width: 48px; height: 48px; border-radius: 8px; object-fit: cover; }
+  .collection-info .col-name { font-size: 1.1rem; font-weight: 700; }
+  .collection-info .col-meta { font-size: 0.78rem; color: var(--text-muted); }
 
-  /* Sort controls */
-  .sort-controls {
-    display: none; gap: 8px; justify-content: center; margin: 12px auto; max-width: 960px; flex-wrap: wrap;
+  /* Sticky results header */
+  .results-header {
+    display: none; position: sticky; top: 0; z-index: 20;
+    background: var(--sticky-bg); backdrop-filter: blur(10px);
+    padding: 12px 0 8px; margin: 0 auto; max-width: 960px;
   }
-  .sort-controls.visible { display: flex; }
+  .results-header.visible { display: block; }
+
+  .stats-bar { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; }
+  .stat { text-align: center; padding: 4px 16px; }
+  .stat .num { font-size: 1.3rem; font-weight: 700; }
+  .stat .lbl { font-size: 0.68rem; color: var(--text-muted); text-transform: uppercase; }
+
+  .controls-row { display: flex; gap: 8px; justify-content: center; margin-top: 8px; flex-wrap: wrap; align-items: center; }
   .sort-btn {
     background: var(--card-bg); border: 1px solid var(--border); color: var(--text);
-    padding: 6px 14px; border-radius: 6px; cursor: pointer; font-size: 0.82rem;
-    transition: all 0.2s;
+    padding: 5px 12px; border-radius: 6px; cursor: pointer; font-size: 0.78rem; transition: all 0.2s;
   }
   .sort-btn:hover { border-color: var(--accent); }
   .sort-btn.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .view-toggle { display: flex; gap: 0; border-radius: 6px; overflow: hidden; border: 1px solid var(--border); margin-left: 8px; }
+  .view-btn { padding: 5px 10px; background: var(--bg); color: var(--text-muted); border: none; cursor: pointer; font-size: 0.78rem; }
+  .view-btn.active { background: var(--accent); color: #fff; }
 
-  /* Results grid */
-  .results-grid {
-    display: flex; flex-direction: column; gap: 12px;
-    max-width: 960px; margin: 16px auto; padding: 0 0 40px;
-  }
+  /* Results grid (card view) */
+  .results-grid { display: flex; flex-direction: column; gap: 12px; max-width: 960px; margin: 8px auto; padding: 0 0 40px; }
 
   /* Item cards */
   .item-card {
     background: var(--card-bg); border: 1px solid var(--border); border-radius: 10px;
-    padding: 16px; transition: border-color 0.2s;
+    padding: 14px; transition: border-color 0.2s, background 0.3s;
   }
   .item-card:hover { border-color: var(--accent); }
-  .item-header {
-    display: flex; justify-content: space-between; align-items: flex-start;
-    margin-bottom: 10px; flex-wrap: wrap; gap: 8px;
-  }
-  .item-name { font-size: 1.05rem; font-weight: 700; }
-  .item-rank { font-size: 0.78rem; color: var(--text-muted); }
-  .item-price { font-size: 0.88rem; color: var(--text-muted); }
+  .item-card.bargain { border-color: var(--bargain-border); background: var(--bargain-bg); }
+  .item-card.bargain::before { content: ''; }
+  .item-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 8px; flex-wrap: wrap; gap: 8px; }
+  .item-name { font-size: 1rem; font-weight: 700; }
+  .item-badges { display: flex; gap: 6px; margin-top: 2px; }
+  .badge { font-size: 0.65rem; padding: 2px 8px; border-radius: 10px; font-weight: 600; }
+  .badge-bargain { background: rgba(46,204,113,0.15); color: var(--success); border: 1px solid rgba(46,204,113,0.3); }
+  .item-rank { font-size: 0.75rem; color: var(--text-muted); }
+  .item-price { font-size: 0.85rem; color: var(--text-muted); }
   .item-price .eth { color: var(--text); font-weight: 600; }
-  .item-score { font-size: 1.5rem; font-weight: 800; text-align: right; min-width: 70px; }
-  .score-breakdown { font-size: 0.68rem; color: var(--text-muted); white-space: nowrap; }
+  .item-score { font-size: 1.4rem; font-weight: 800; text-align: right; min-width: 70px; }
+  .score-breakdown { font-size: 0.65rem; color: var(--text-muted); white-space: nowrap; }
+  .value-ratio { font-size: 0.7rem; color: var(--text-muted); margin-top: 2px; }
 
-  .traits-section { margin-top: 8px; }
-  .traits-label {
-    font-size: 0.72rem; color: var(--text-muted); text-transform: uppercase;
-    margin-bottom: 6px; letter-spacing: 0.5px;
-  }
-  .traits-grid { display: flex; flex-wrap: wrap; gap: 5px; }
+  .traits-section { margin-top: 6px; }
+  .traits-label { font-size: 0.7rem; color: var(--text-muted); text-transform: uppercase; margin-bottom: 5px; letter-spacing: 0.5px; }
+  .traits-grid { display: flex; flex-wrap: wrap; gap: 4px; }
 
-  .trait-tag {
-    display: inline-flex; flex-direction: column; padding: 3px 9px;
-    border-radius: 5px; font-size: 0.75rem; line-height: 1.3; border: 1px solid;
-  }
-  .trait-tag .trait-type { font-size: 0.62rem; opacity: 0.7; }
+  .trait-tag { display: inline-flex; flex-direction: column; padding: 3px 8px; border-radius: 5px; font-size: 0.72rem; line-height: 1.3; border: 1px solid; }
+  .trait-tag .trait-type { font-size: 0.6rem; opacity: 0.7; }
   .trait-tag .trait-value { font-weight: 600; }
-  .trait-tag .trait-pct { font-size: 0.58rem; opacity: 0.6; }
+  .trait-tag .trait-pct { font-size: 0.55rem; opacity: 0.6; }
   .trait-orange { background: rgba(255,140,0,0.12); color: var(--orange); border-color: rgba(255,140,0,0.3); }
   .trait-purple { background: rgba(155,89,182,0.12); color: var(--purple); border-color: rgba(155,89,182,0.3); }
   .trait-blue { background: rgba(52,152,219,0.12); color: var(--blue); border-color: rgba(52,152,219,0.3); }
   .trait-common { background: rgba(149,165,166,0.06); color: var(--common); border-color: rgba(149,165,166,0.15); }
 
-  .special-traits { margin-top: 6px; }
-  .special-toggle {
-    background: none; border: 1px solid var(--border); color: var(--text-muted);
-    padding: 3px 10px; border-radius: 4px; cursor: pointer; font-size: 0.7rem;
-  }
+  .special-traits { margin-top: 5px; }
+  .special-toggle { background: none; border: 1px solid var(--border); color: var(--text-muted); padding: 2px 10px; border-radius: 4px; cursor: pointer; font-size: 0.68rem; }
   .special-toggle:hover { border-color: var(--accent); color: var(--text); }
-  .special-content { display: none; margin-top: 6px; }
+  .special-content { display: none; margin-top: 5px; }
   .special-content.open { display: flex; flex-wrap: wrap; gap: 4px; }
 
-  .opensea-link {
-    display: inline-block; margin-top: 6px; font-size: 0.78rem;
-    color: var(--accent); text-decoration: none;
-  }
+  .opensea-link { display: inline-block; margin-top: 5px; font-size: 0.75rem; color: var(--accent); text-decoration: none; }
   .opensea-link:hover { text-decoration: underline; }
+
+  /* Compact table view */
+  .results-table { display: none; max-width: 960px; margin: 8px auto; padding: 0 0 40px; }
+  .results-table.visible { display: block; }
+  .results-table table { width: 100%; border-collapse: collapse; font-size: 0.82rem; }
+  .results-table th { text-align: left; padding: 8px 10px; border-bottom: 2px solid var(--border); color: var(--text-muted); font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.5px; cursor: pointer; white-space: nowrap; }
+  .results-table th:hover { color: var(--accent); }
+  .results-table td { padding: 7px 10px; border-bottom: 1px solid var(--border); vertical-align: middle; }
+  .results-table tr:hover td { background: var(--table-hover); }
+  .results-table .score-cell { font-weight: 700; font-size: 0.95rem; }
+  .results-table .price-cell { font-weight: 600; }
+  .results-table .tier-dots { display: flex; gap: 4px; }
+  .results-table .tier-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+  .results-table .bargain-row td { background: var(--bargain-bg); }
+  .results-table a { color: var(--accent); text-decoration: none; }
+  .results-table a:hover { text-decoration: underline; }
+  .results-table .expandable { cursor: pointer; }
+  .results-table .expand-row { display: none; }
+  .results-table .expand-row.open { display: table-row; }
+  .results-table .expand-cell { padding: 10px; }
 
   @media (max-width: 640px) {
     .form-row { flex-direction: column; }
-    .form-group.narrow { flex: 1; }
     .form-group.wide { min-width: 100%; }
     .tier-config { flex-direction: column; }
     .item-header { flex-direction: column; }
     .item-score { text-align: left; }
+    .theme-toggle { top: 12px; right: 12px; }
+    .results-table { overflow-x: auto; }
   }
 </style>
 </head>
@@ -219,6 +250,7 @@
 <div class="app-header">
   <h1>NFT Rarity Scorer</h1>
   <div class="subtitle">Score NFT traits by rarity tiers. Data from OpenSea. Runs entirely in your browser.</div>
+  <button class="theme-toggle" id="themeToggle" onclick="toggleTheme()" title="Toggle light/dark mode">&#9790;</button>
 </div>
 
 <!-- API Key -->
@@ -228,7 +260,7 @@
     <div class="form-group">
       <input type="password" id="apiKey" placeholder="Enter your OpenSea API key" autocomplete="off">
     </div>
-    <button class="btn-analyze" style="padding:8px 16px; font-size:0.85rem;" onclick="saveApiKey()">Save</button>
+    <button class="btn btn-analyze" style="padding:8px 16px; font-size:0.85rem;" onclick="saveApiKey()">Save</button>
     <span id="keyStatus" class="key-status"></span>
   </div>
 </div>
@@ -259,32 +291,32 @@
       <span class="tier-label">Orange</span>
       <span class="tier-sep">&lt;</span>
       <input type="number" id="thresh1" value="2" min="0" max="100" step="0.5">
-      <span class="tier-sep">% →</span>
+      <span class="tier-sep">% &rarr;</span>
       <input type="number" id="points1" value="7" min="0" max="100">
       <span class="tier-sep">pts</span>
     </div>
     <div class="tier-group tier-purple">
       <span class="tier-label">Purple</span>
       <input type="number" id="thresh1_upper" value="2" min="0" max="100" step="0.5" disabled style="width:40px; opacity:0.5;">
-      <span class="tier-sep">–</span>
+      <span class="tier-sep">&ndash;</span>
       <input type="number" id="thresh2" value="5" min="0" max="100" step="0.5">
-      <span class="tier-sep">% →</span>
+      <span class="tier-sep">% &rarr;</span>
       <input type="number" id="points2" value="3" min="0" max="100">
       <span class="tier-sep">pts</span>
     </div>
     <div class="tier-group tier-blue">
       <span class="tier-label">Blue</span>
       <input type="number" id="thresh2_upper" value="5" min="0" max="100" step="0.5" disabled style="width:40px; opacity:0.5;">
-      <span class="tier-sep">–</span>
+      <span class="tier-sep">&ndash;</span>
       <input type="number" id="thresh3" value="20" min="0" max="100" step="0.5">
-      <span class="tier-sep">% →</span>
+      <span class="tier-sep">% &rarr;</span>
       <input type="number" id="points3" value="1" min="0" max="100">
       <span class="tier-sep">pts</span>
     </div>
   </div>
   <div style="margin-top: 16px; text-align: center; display: flex; gap: 10px; justify-content: center;">
-    <button class="btn-analyze" id="analyzeBtn" onclick="analyze()">Analyze Collection</button>
-    <button class="btn-analyze" id="cancelBtn" onclick="cancelAnalysis()" style="background: linear-gradient(135deg, var(--danger), #c0392b); display: none;">Cancel</button>
+    <button class="btn btn-analyze" id="analyzeBtn" onclick="analyze()">Analyze Collection</button>
+    <button class="btn btn-cancel" id="cancelBtn" onclick="cancelAnalysis()" style="display: none;">Cancel</button>
   </div>
 </div>
 
@@ -297,33 +329,72 @@
 <!-- Error -->
 <div class="error-msg" id="errorMsg"></div>
 
-<!-- Stats -->
-<div class="stats-bar" id="statsBar">
-  <div class="stat"><div class="num" id="statCount">0</div><div class="lbl" id="statCountLabel">Items</div></div>
-  <div class="stat"><div class="num" id="statTop">0</div><div class="lbl">Top Score</div></div>
-  <div class="stat"><div class="num" id="statAvg">0</div><div class="lbl">Avg Score</div></div>
-  <div class="stat"><div class="num" id="statLow">0</div><div class="lbl">Low Score</div></div>
-  <div class="stat"><div class="num" id="statSupply">0</div><div class="lbl">Total Supply</div></div>
+<!-- Collection Info -->
+<div class="collection-info" id="collectionInfo">
+  <img id="colImage" src="" alt="">
+  <div>
+    <div class="col-name" id="colName"></div>
+    <div class="col-meta" id="colMeta"></div>
+  </div>
 </div>
 
-<!-- Sort -->
-<div class="sort-controls" id="sortControls">
-  <button class="sort-btn active" data-sort="score" onclick="sortResults('score')">Sort by Score</button>
-  <button class="sort-btn" data-sort="price" onclick="sortResults('price')">Sort by Price</button>
-  <button class="sort-btn" data-sort="rarity" onclick="sortResults('rarity')">Sort by OS Rarity</button>
-  <button class="sort-btn" data-sort="toggle" onclick="toggleSortDir()">&#8597; Toggle Direction</button>
+<!-- Sticky results header -->
+<div class="results-header" id="resultsHeader">
+  <div class="stats-bar" id="statsBar">
+    <div class="stat"><div class="num" id="statCount">0</div><div class="lbl" id="statCountLabel">Items</div></div>
+    <div class="stat"><div class="num" id="statTop">0</div><div class="lbl">Top Score</div></div>
+    <div class="stat"><div class="num" id="statAvg">0</div><div class="lbl">Avg Score</div></div>
+    <div class="stat"><div class="num" id="statLow">0</div><div class="lbl">Low Score</div></div>
+    <div class="stat"><div class="num" id="statSupply">0</div><div class="lbl">Total Supply</div></div>
+  </div>
+  <div class="controls-row">
+    <button class="sort-btn active" data-sort="score" onclick="sortResults('score')">Score</button>
+    <button class="sort-btn" data-sort="value" onclick="sortResults('value')">Value</button>
+    <button class="sort-btn" data-sort="price" onclick="sortResults('price')">Price</button>
+    <button class="sort-btn" data-sort="rarity" onclick="sortResults('rarity')">OS Rarity</button>
+    <button class="sort-btn" data-sort="toggle" onclick="toggleSortDir()">&#8597;</button>
+    <div class="view-toggle">
+      <button class="view-btn active" data-view="cards" onclick="setView('cards')">Cards</button>
+      <button class="view-btn" data-view="table" onclick="setView('table')">Table</button>
+    </div>
+    <button class="btn btn-secondary" onclick="exportCSV()" style="font-size:0.78rem; padding:5px 12px;">CSV</button>
+  </div>
 </div>
 
-<!-- Results -->
+<!-- Results: Card view -->
 <div class="results-grid" id="resultsGrid"></div>
+
+<!-- Results: Table view -->
+<div class="results-table" id="resultsTable"></div>
 
 <script>
 // ─── State ───
 let currentMode = 'listed';
 let currentSort = 'score';
 let currentSortDir = 'desc';
+let currentView = 'cards';
 let scoredItems = [];
 let abortController = null;
+let isRunning = false;
+let lastColData = null;
+let lastChain = '';
+let lastContract = '';
+let lastThresholds = [];
+let lastPoints = [];
+
+// ─── Theme ───
+function toggleTheme() {
+  const html = document.documentElement;
+  const next = html.dataset.theme === 'dark' ? 'light' : 'dark';
+  html.dataset.theme = next;
+  localStorage.setItem('nft_scorer_theme', next);
+  document.getElementById('themeToggle').innerHTML = next === 'dark' ? '&#9790;' : '&#9788;';
+}
+function loadTheme() {
+  const saved = localStorage.getItem('nft_scorer_theme') || 'dark';
+  document.documentElement.dataset.theme = saved;
+  document.getElementById('themeToggle').innerHTML = saved === 'dark' ? '&#9790;' : '&#9788;';
+}
 
 // ─── API Key ───
 function loadApiKey() {
@@ -333,69 +404,70 @@ function loadApiKey() {
 }
 function saveApiKey() {
   const key = document.getElementById('apiKey').value.trim();
-  if (key) {
-    localStorage.setItem('opensea_api_key', key);
-    updateKeyStatus();
-  }
+  if (key) { localStorage.setItem('opensea_api_key', key); updateKeyStatus(); }
 }
 function updateKeyStatus() {
   const el = document.getElementById('keyStatus');
   const key = localStorage.getItem('opensea_api_key');
-  if (key) {
-    el.textContent = 'Key saved';
-    el.className = 'key-status key-saved';
-  } else {
-    el.textContent = 'No key saved';
-    el.className = 'key-status key-missing';
-  }
+  el.textContent = key ? 'Key saved' : 'No key saved';
+  el.className = 'key-status ' + (key ? 'key-saved' : 'key-missing');
 }
 function getApiKey() {
   return document.getElementById('apiKey').value.trim() || localStorage.getItem('opensea_api_key') || '';
 }
 
-// ─── Mode ───
+// ─── Last collection ───
+function loadLastCollection() {
+  const last = localStorage.getItem('nft_scorer_last_collection');
+  if (last) document.getElementById('collectionInput').value = last;
+}
+function saveLastCollection(slug) {
+  localStorage.setItem('nft_scorer_last_collection', slug);
+}
+
+// ─── Mode / View ───
 function setMode(mode) {
   currentMode = mode;
-  document.querySelectorAll('.mode-btn').forEach(b => {
-    b.classList.toggle('active', b.dataset.mode === mode);
-  });
+  document.querySelectorAll('.mode-btn').forEach(b => b.classList.toggle('active', b.dataset.mode === mode));
+}
+function setView(view) {
+  currentView = view;
+  document.querySelectorAll('.view-btn').forEach(b => b.classList.toggle('active', b.dataset.view === view));
+  document.getElementById('resultsGrid').style.display = view === 'cards' ? 'flex' : 'none';
+  document.getElementById('resultsTable').className = 'results-table' + (view === 'table' ? ' visible' : '');
 }
 
 // ─── Tier sync ───
-document.getElementById('thresh1').addEventListener('input', function() {
-  document.getElementById('thresh1_upper').value = this.value;
-});
-document.getElementById('thresh2').addEventListener('input', function() {
-  document.getElementById('thresh2_upper').value = this.value;
-});
+document.getElementById('thresh1').addEventListener('input', function() { document.getElementById('thresh1_upper').value = this.value; });
+document.getElementById('thresh2').addEventListener('input', function() { document.getElementById('thresh2_upper').value = this.value; });
 
 // ─── Helpers ───
 function parseSlug(input) {
   input = input.trim();
   const match = input.match(/opensea\.io\/collection\/([a-z0-9_-]+)/i);
-  if (match) return match[1];
-  if (/^[a-z0-9_-]+$/i.test(input)) return input;
+  if (match) return match[1].toLowerCase();
+  if (/^[a-z0-9_-]+$/i.test(input)) return input.toLowerCase();
   return null;
 }
-
 function escapeHtml(str) {
   return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
+function showError(msg) { const el = document.getElementById('errorMsg'); el.textContent = msg; el.classList.add('visible'); }
+function hideError() { document.getElementById('errorMsg').classList.remove('visible'); }
 
-function showError(msg) {
-  const el = document.getElementById('errorMsg');
-  el.textContent = msg;
-  el.classList.add('visible');
-}
-function hideError() {
-  document.getElementById('errorMsg').classList.remove('visible');
-}
-
+let progressStartTime = 0;
 function setProgress(pct, text) {
   document.getElementById('progressFill').style.width = pct + '%';
-  document.getElementById('progressText').textContent = text;
+  if (pct > 5 && pct < 95) {
+    const elapsed = (Date.now() - progressStartTime) / 1000;
+    const total = elapsed / (pct / 100);
+    const remaining = Math.max(0, Math.round(total - elapsed));
+    document.getElementById('progressText').textContent = text + (remaining > 2 ? ` (~${remaining}s remaining)` : '');
+  } else {
+    document.getElementById('progressText').textContent = text;
+  }
 }
-function showProgress() { document.getElementById('progress').classList.add('visible'); }
+function showProgress() { document.getElementById('progress').classList.add('visible'); progressStartTime = Date.now(); }
 function hideProgress() { document.getElementById('progress').classList.remove('visible'); }
 
 async function apiGet(url, apiKey, retries = 3) {
@@ -406,7 +478,7 @@ async function apiGet(url, apiKey, retries = 3) {
     });
     if (res.status === 429 && attempt < retries) {
       const wait = Math.pow(2, attempt + 1) * 1000;
-      console.warn(`Rate limited (429), retrying in ${wait}ms... (attempt ${attempt + 1}/${retries})`);
+      console.warn(`Rate limited (429), retrying in ${wait}ms...`);
       await sleep(wait);
       continue;
     }
@@ -417,7 +489,6 @@ async function apiGet(url, apiKey, retries = 3) {
     return res.json();
   }
 }
-
 function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
 
 function parsePrice(listing) {
@@ -428,18 +499,21 @@ function parsePrice(listing) {
     const intPart = str.slice(0, -decimals) || '0';
     const fracPart = str.slice(-decimals).replace(/0+$/, '');
     return parseFloat(intPart + (fracPart ? '.' + fracPart : ''));
-  } catch (e) {
-    return 0;
-  }
+  } catch (e) { return 0; }
 }
-
 function formatPrice(price) {
   if (price == null) return null;
   if (price >= 1) return parseFloat(price.toFixed(4));
   return parseFloat(price.toPrecision(4));
 }
 
-let isRunning = false;
+function scoreColor(score, min, max) {
+  if (max === min) return 'var(--score-mid)';
+  const ratio = (score - min) / (max - min);
+  if (ratio >= 0.66) return 'var(--score-high)';
+  if (ratio >= 0.33) return 'var(--score-mid)';
+  return 'var(--score-low)';
+}
 
 function cancelAnalysis() {
   if (abortController) abortController.abort();
@@ -474,6 +548,8 @@ async function analyze() {
     Math.max(0, parseInt(document.getElementById('points2').value) || 3),
     Math.max(0, parseInt(document.getElementById('points3').value) || 1)
   ];
+  lastThresholds = thresholds;
+  lastPoints = points;
 
   isRunning = true;
   const btn = document.getElementById('analyzeBtn');
@@ -483,22 +559,31 @@ async function analyze() {
   abortController = new AbortController();
   showProgress();
   document.getElementById('resultsGrid').innerHTML = '';
-  document.getElementById('statsBar').classList.remove('visible');
-  document.getElementById('sortControls').classList.remove('visible');
+  document.getElementById('resultsTable').innerHTML = '';
+  document.getElementById('resultsHeader').classList.remove('visible');
+  document.getElementById('collectionInfo').classList.remove('visible');
 
   try {
     // Step 1: Collection info
     setProgress(5, 'Fetching collection info...');
     const colData = await apiGet(`https://api.opensea.io/api/v2/collections/${slug}`, apiKey);
+    lastColData = colData;
     const totalSupply = colData.total_supply || 0;
     const contracts = colData.contracts || [];
     const chain = contracts[0]?.chain || 'ethereum';
     const contractAddress = contracts[0]?.address || '';
+    lastChain = chain;
+    lastContract = contractAddress;
 
     if (!totalSupply) throw new Error('Could not determine collection total supply.');
     if (!contractAddress) throw new Error('Could not determine contract address.');
 
-    // Step 2: Traits (rarity counts) — try dedicated endpoint first
+    saveLastCollection(document.getElementById('collectionInput').value.trim());
+
+    // Show collection info
+    showCollectionInfo(colData, totalSupply);
+
+    // Step 2: Traits (rarity counts)
     setProgress(10, 'Fetching trait data...');
     let traitCounts = {};
     try {
@@ -506,9 +591,7 @@ async function analyze() {
       for (const [traitType, values] of Object.entries(traitData)) {
         if (typeof values === 'object' && values !== null) {
           for (const [val, count] of Object.entries(values)) {
-            if (typeof count === 'number') {
-              traitCounts[`${traitType}::${val}`] = count;
-            }
+            if (typeof count === 'number') traitCounts[`${traitType}::${val}`] = count;
           }
         }
       }
@@ -518,31 +601,23 @@ async function analyze() {
 
     const hasTraitCounts = Object.keys(traitCounts).length > 0;
 
-    // Step 2b: If no trait counts, fetch ALL collection items to build the rarity table
     if (!hasTraitCounts) {
       setProgress(15, 'Building trait rarity table from all items...');
       const allNfts = await fetchAllItems(slug, apiKey, totalSupply);
       traitCounts = {};
       for (const nft of allNfts) {
-        for (const t of nft.traits) {
-          const key = `${t.type}::${t.value}`;
-          traitCounts[key] = (traitCounts[key] || 0) + 1;
-        }
+        for (const t of nft.traits) traitCounts[`${t.type}::${t.value}`] = (traitCounts[`${t.type}::${t.value}`] || 0) + 1;
       }
       console.log('Built trait counts from', allNfts.length, 'items,', Object.keys(traitCounts).length, 'unique trait pairs');
 
-      // If mode is "all", we already have all items — reuse them
       if (currentMode === 'all') {
         setProgress(95, 'Scoring items...');
         scoredItems = allNfts.map(item => scoreItem(item, traitCounts, totalSupply, thresholds, points));
-        scoredItems.sort((a, b) => b.totalScore - a.totalScore);
-        setProgress(100, 'Done!');
-        renderResults(scoredItems, totalSupply, slug, chain, contractAddress, thresholds, points);
-        return; // skip the rest
+        finishAnalysis(scoredItems, totalSupply, slug, chain, contractAddress, thresholds, points);
+        return;
       }
     }
 
-    // Step 3: Get items to display
     let items = [];
     if (currentMode === 'listed') {
       setProgress(70, 'Fetching active listings...');
@@ -552,25 +627,15 @@ async function analyze() {
       items = await fetchAllItems(slug, apiKey, totalSupply);
     }
 
-    if (items.length === 0) {
-      throw new Error('No items found. The collection may have no active listings.');
-    }
+    if (items.length === 0) throw new Error('No items found. The collection may have no active listings.');
 
-    // Step 4: Score items
     setProgress(95, 'Scoring items...');
     scoredItems = items.map(item => scoreItem(item, traitCounts, totalSupply, thresholds, points));
-    scoredItems.sort((a, b) => b.totalScore - a.totalScore);
-
-    // Step 5: Render
-    setProgress(100, 'Done!');
-    renderResults(scoredItems, totalSupply, slug, chain, contractAddress, thresholds, points);
+    finishAnalysis(scoredItems, totalSupply, slug, chain, contractAddress, thresholds, points);
 
   } catch (e) {
-    if (e.name === 'AbortError') {
-      showError('Analysis cancelled.');
-    } else {
-      showError(e.message);
-    }
+    if (e.name === 'AbortError') showError('Analysis cancelled.');
+    else showError(e.message);
   } finally {
     isRunning = false;
     btn.disabled = false;
@@ -580,78 +645,96 @@ async function analyze() {
   }
 }
 
+function finishAnalysis(items, totalSupply, slug, chain, contractAddress, thresholds, points) {
+  // Compute value scores and bargain flags
+  const scores = items.map(i => i.totalScore);
+  const minScore = Math.min(...scores);
+  const maxScore = Math.max(...scores);
+
+  // Rank by score and price for bargain detection
+  const byScore = [...items].sort((a, b) => b.totalScore - a.totalScore);
+  const byPrice = [...items].filter(i => i.price != null).sort((a, b) => a.price - b.price);
+  const scoreRankMap = {};
+  byScore.forEach((it, i) => scoreRankMap[it.tokenId] = i + 1);
+  const priceRankMap = {};
+  byPrice.forEach((it, i) => priceRankMap[it.tokenId] = i + 1);
+
+  items.forEach(item => {
+    item.valueScore = item.price > 0 ? Math.round(item.totalScore / item.price) : null;
+    item.scoreColor = scoreColor(item.totalScore, minScore, maxScore);
+    const sr = scoreRankMap[item.tokenId] || items.length;
+    const pr = priceRankMap[item.tokenId] || items.length;
+    item.isBargain = item.price != null && sr < pr * 0.6;
+  });
+
+  items.sort((a, b) => b.totalScore - a.totalScore);
+  scoredItems = items;
+
+  setProgress(100, 'Done!');
+  renderResults(items, totalSupply, slug, chain, contractAddress, thresholds, points, minScore, maxScore);
+}
+
+function showCollectionInfo(colData, totalSupply) {
+  const el = document.getElementById('collectionInfo');
+  const img = document.getElementById('colImage');
+  const name = document.getElementById('colName');
+  const meta = document.getElementById('colMeta');
+  img.src = colData.image_url || '';
+  img.style.display = colData.image_url ? 'block' : 'none';
+  name.textContent = colData.name || colData.collection || '';
+  meta.textContent = `${totalSupply} items · ${currentMode === 'listed' ? 'Listed' : 'All'} mode`;
+  el.classList.add('visible');
+}
+
 // ─── Fetch Listed Items ───
 async function fetchListedItems(slug, chain, contractAddress, apiKey) {
-  // Get all active listings
   let listings = [];
   let next = null;
   let page = 0;
-
   do {
     const url = next
       ? `https://api.opensea.io/api/v2/listings/collection/${slug}/all?limit=100&next=${next}`
       : `https://api.opensea.io/api/v2/listings/collection/${slug}/all?limit=100`;
     const data = await apiGet(url, apiKey);
-    const batch = data.listings || [];
-    listings = listings.concat(batch);
+    listings = listings.concat(data.listings || []);
     next = data.next || null;
     page++;
     setProgress(25 + Math.min(page * 10, 30), `Fetched ${listings.length} listings...`);
     if (next) await sleep(250);
   } while (next);
 
-  // Deduplicate by token ID (keep best/lowest price)
   const tokenMap = {};
   for (const listing of listings) {
     const tokenId = listing.protocol_data?.parameters?.offer?.[0]?.identifierOrCriteria;
     if (!tokenId) continue;
     const price = parsePrice(listing);
     const currency = listing.price?.current?.currency || 'ETH';
-
-    if (!tokenMap[tokenId] || price < tokenMap[tokenId].price) {
-      tokenMap[tokenId] = { tokenId, price, currency };
-    }
+    if (!tokenMap[tokenId] || price < tokenMap[tokenId].price) tokenMap[tokenId] = { tokenId, price, currency };
   }
 
   const tokenIds = Object.keys(tokenMap);
   setProgress(55, `Found ${tokenIds.length} unique listed items. Fetching traits...`);
 
-  // Fetch each item's traits
   const items = [];
   const batchSize = 5;
   for (let i = 0; i < tokenIds.length; i += batchSize) {
     const batch = tokenIds.slice(i, i + batchSize);
     const promises = batch.map(async (tokenId) => {
       try {
-        const data = await apiGet(
-          `https://api.opensea.io/api/v2/chain/${chain}/contract/${contractAddress}/nfts/${tokenId}`,
-          apiKey
-        );
+        const data = await apiGet(`https://api.opensea.io/api/v2/chain/${chain}/contract/${contractAddress}/nfts/${tokenId}`, apiKey);
         const nft = data.nft || {};
-        const traits = (nft.traits || []).map(t => ({
-          type: t.trait_type,
-          value: String(t.value)
-        }));
         return {
-          tokenId,
-          name: nft.name || `#${tokenId}`,
-          price: tokenMap[tokenId].price,
-          currency: tokenMap[tokenId].currency,
+          tokenId, name: nft.name || `#${tokenId}`,
+          price: tokenMap[tokenId].price, currency: tokenMap[tokenId].currency,
           rarity: nft.rarity,
-          traits
+          traits: (nft.traits || []).map(t => ({ type: t.trait_type, value: String(t.value) }))
         };
-      } catch (e) {
-        console.warn(`Failed to fetch token ${tokenId}:`, e.message);
-        return null;
-      }
+      } catch (e) { console.warn(`Failed to fetch token ${tokenId}:`, e.message); return null; }
     });
-
-    const results = await Promise.all(promises);
-    items.push(...results.filter(Boolean));
+    items.push(...(await Promise.all(promises)).filter(Boolean));
     setProgress(55 + Math.round((i / tokenIds.length) * 35), `Fetched traits for ${items.length}/${tokenIds.length} items...`);
     if (i + batchSize < tokenIds.length) await sleep(300);
   }
-
   return items;
 }
 
@@ -659,32 +742,20 @@ async function fetchListedItems(slug, chain, contractAddress, apiKey) {
 async function fetchAllItems(slug, apiKey, totalSupply) {
   let items = [];
   let next = null;
-  let page = 0;
-
   do {
     const url = next
       ? `https://api.opensea.io/api/v2/collection/${slug}/nfts?limit=200&next=${next}`
       : `https://api.opensea.io/api/v2/collection/${slug}/nfts?limit=200`;
     const data = await apiGet(url, apiKey);
-    const batch = (data.nfts || []).map(nft => ({
-      tokenId: nft.identifier,
-      name: nft.name || `#${nft.identifier}`,
-      price: null,
-      currency: null,
-      rarity: nft.rarity,
-      traits: (nft.traits || []).map(t => ({
-        type: t.trait_type,
-        value: String(t.value)
-      }))
-    }));
-    items = items.concat(batch);
+    items = items.concat((data.nfts || []).map(nft => ({
+      tokenId: nft.identifier, name: nft.name || `#${nft.identifier}`,
+      price: null, currency: null, rarity: nft.rarity,
+      traits: (nft.traits || []).map(t => ({ type: t.trait_type, value: String(t.value) }))
+    })));
     next = data.next || null;
-    page++;
-    setProgress(25 + Math.min(Math.round((items.length / totalSupply) * 65), 65),
-      `Fetched ${items.length}/${totalSupply} items...`);
+    setProgress(25 + Math.min(Math.round((items.length / totalSupply) * 65), 65), `Fetched ${items.length}/${totalSupply} items...`);
     if (next) await sleep(250);
   } while (next);
-
   return items;
 }
 
@@ -692,70 +763,59 @@ async function fetchAllItems(slug, apiKey, totalSupply) {
 function scoreItem(item, traitCounts, totalSupply, thresholds, points) {
   let totalScore = 0;
   const traitScores = [];
-
   for (const trait of item.traits) {
     const key = `${trait.type}::${trait.value}`;
     const count = traitCounts[key] || 0;
     const pct = totalSupply > 0 ? (count / totalSupply) * 100 : 0;
     let tier, pts;
-
     if (pct < thresholds[0]) { tier = 'orange'; pts = points[0]; }
     else if (pct < thresholds[1]) { tier = 'purple'; pts = points[1]; }
     else if (pct < thresholds[2]) { tier = 'blue'; pts = points[2]; }
     else { tier = 'common'; pts = 0; }
-
     totalScore += pts;
-    traitScores.push({
-      type: trait.type, value: trait.value,
-      count, pct: pct.toFixed(2), tier, points: pts
-    });
+    traitScores.push({ type: trait.type, value: trait.value, count, pct: pct.toFixed(2), tier, points: pts });
   }
-
-  const mainTraits = traitScores.filter(t => !t.type.startsWith('_'));
-  const specialTraits = traitScores.filter(t => t.type.startsWith('_') && t.points > 0);
-
   return {
-    tokenId: item.tokenId,
-    name: item.name,
-    price: item.price,
-    currency: item.currency || 'ETH',
-    rarityRank: item.rarity?.rank,
-    totalSupply: totalSupply,
-    totalScore,
+    tokenId: item.tokenId, name: item.name, price: item.price, currency: item.currency || 'ETH',
+    rarityRank: item.rarity?.rank, totalSupply, totalScore,
     orangeCount: traitScores.filter(t => t.tier === 'orange').length,
     purpleCount: traitScores.filter(t => t.tier === 'purple').length,
     blueCount: traitScores.filter(t => t.tier === 'blue').length,
-    mainTraits,
-    specialTraits
+    mainTraits: traitScores.filter(t => !t.type.startsWith('_')),
+    specialTraits: traitScores.filter(t => t.type.startsWith('_') && t.points > 0)
   };
 }
 
 // ─── Rendering ───
-function renderResults(items, totalSupply, slug, chain, contractAddress, thresholds, points) {
-  // Stats
+function renderResults(items, totalSupply, slug, chain, contractAddress, thresholds, points, minScore, maxScore) {
+  const scores = items.map(i => i.totalScore);
   document.getElementById('statCount').textContent = items.length;
   document.getElementById('statCountLabel').textContent = currentMode === 'listed' ? 'Listed Items' : 'Total Items';
-  document.getElementById('statTop').textContent = items.length > 0 ? items[0].totalScore : 0;
-  document.getElementById('statAvg').textContent = items.length > 0 ? Math.round(items.reduce((s, i) => s + i.totalScore, 0) / items.length) : 0;
-  document.getElementById('statLow').textContent = items.length > 0 ? items[items.length - 1].totalScore : 0;
+  document.getElementById('statTop').textContent = Math.max(...scores);
+  document.getElementById('statAvg').textContent = Math.round(scores.reduce((s, v) => s + v, 0) / scores.length);
+  document.getElementById('statLow').textContent = Math.min(...scores);
   document.getElementById('statSupply').textContent = totalSupply;
-  document.getElementById('statsBar').classList.add('visible');
-  document.getElementById('sortControls').classList.add('visible');
+  document.getElementById('resultsHeader').classList.add('visible');
 
-  renderCards(items, totalSupply, chain, contractAddress, thresholds, points);
+  renderCards(items, totalSupply, chain, contractAddress, points, minScore, maxScore);
+  renderTable(items, totalSupply, chain, contractAddress, minScore, maxScore);
 }
 
-function renderCards(items, totalSupply, chain, contractAddress, thresholds, points) {
+function renderCards(items, totalSupply, chain, contractAddress, points, minScore, maxScore) {
   const grid = document.getElementById('resultsGrid');
   grid.innerHTML = items.map((item, idx) => `
-    <div class="item-card" data-score="${item.totalScore}" data-price="${item.price != null ? item.price : 999999}" data-rarity="${item.rarityRank || 9999}">
+    <div class="item-card${item.isBargain ? ' bargain' : ''}" data-score="${item.totalScore}" data-price="${item.price != null ? item.price : 999999}" data-rarity="${item.rarityRank || 9999}" data-value="${item.valueScore || 0}">
       <div class="item-header">
         <div>
           <div class="item-name"><span class="item-idx">#${idx + 1}</span> ${escapeHtml(item.name)}</div>
-          <div class="item-rank">OpenSea Rarity Rank: ${item.rarityRank || 'N/A'} / ${totalSupply}</div>
+          <div class="item-badges">
+            ${item.isBargain ? '<span class="badge badge-bargain">Good Value</span>' : ''}
+          </div>
+          <div class="item-rank">OS Rarity: ${item.rarityRank || 'N/A'} / ${totalSupply}</div>
           <div class="item-price">${item.price != null ? `<span class="eth">${formatPrice(item.price)} ${item.currency}</span>` : '<span style="color:var(--text-muted)">Not listed</span>'}</div>
+          ${item.valueScore != null ? `<div class="value-ratio">Value: ${item.valueScore} pts/ETH</div>` : ''}
         </div>
-        <div class="item-score">
+        <div class="item-score" style="color:${item.scoreColor}">
           ${item.totalScore}
           <div class="score-breakdown">
             <span style="color:var(--orange)">${item.orangeCount}&times;${points[0]}</span> +
@@ -773,8 +833,7 @@ function renderCards(items, totalSupply, chain, contractAddress, thresholds, poi
               <span class="trait-type">${escapeHtml(t.type)}</span>
               <span class="trait-value">${escapeHtml(t.value)}</span>
               <span class="trait-pct">${t.pct}% (${t.count}/${totalSupply})${t.points > 0 ? ' +' + t.points : ''}</span>
-            </div>
-          `).join('')}
+            </div>`).join('')}
         </div>
       </div>
       ${item.specialTraits.length > 0 ? `
@@ -786,65 +845,142 @@ function renderCards(items, totalSupply, chain, contractAddress, thresholds, poi
               <span class="trait-type">${escapeHtml(t.type.replace(/^_/, ''))}</span>
               <span class="trait-value">${escapeHtml(t.value)}</span>
               <span class="trait-pct">${t.pct}% +${t.points}</span>
-            </div>
-          `).join('')}
+            </div>`).join('')}
         </div>
-      </div>
-      ` : ''}
+      </div>` : ''}
       <a class="opensea-link" href="https://opensea.io/assets/${chain}/${contractAddress}/${item.tokenId}" target="_blank" rel="noopener">View on OpenSea &#8599;</a>
     </div>
   `).join('');
+}
+
+function renderTable(items, totalSupply, chain, contractAddress, minScore, maxScore) {
+  const el = document.getElementById('resultsTable');
+  el.innerHTML = `<table>
+    <thead><tr>
+      <th>#</th>
+      <th onclick="sortResults('score')">Score</th>
+      <th onclick="sortResults('value')">Value</th>
+      <th onclick="sortResults('price')">Price</th>
+      <th>Name</th>
+      <th onclick="sortResults('rarity')">OS Rank</th>
+      <th>Tiers</th>
+      <th></th>
+    </tr></thead>
+    <tbody>
+    ${items.map((item, idx) => `
+      <tr class="expandable${item.isBargain ? ' bargain-row' : ''}" data-score="${item.totalScore}" data-price="${item.price != null ? item.price : 999999}" data-rarity="${item.rarityRank || 9999}" data-value="${item.valueScore || 0}" onclick="toggleTableRow(this)">
+        <td><span class="tbl-idx">${idx + 1}</span></td>
+        <td class="score-cell" style="color:${item.scoreColor}">${item.totalScore}</td>
+        <td>${item.valueScore != null ? item.valueScore : '—'}</td>
+        <td class="price-cell">${item.price != null ? formatPrice(item.price) + ' ' + item.currency : '—'}</td>
+        <td>${escapeHtml(item.name)}${item.isBargain ? ' <span class="badge badge-bargain">Value</span>' : ''}</td>
+        <td>${item.rarityRank || 'N/A'}</td>
+        <td><div class="tier-dots">
+          <span style="color:var(--orange)">${item.orangeCount}</span>/<span style="color:var(--purple)">${item.purpleCount}</span>/<span style="color:var(--blue)">${item.blueCount}</span>
+        </div></td>
+        <td><a href="https://opensea.io/assets/${chain}/${contractAddress}/${item.tokenId}" target="_blank" rel="noopener" onclick="event.stopPropagation()">&#8599;</a></td>
+      </tr>
+      <tr class="expand-row" id="expand-${item.tokenId}">
+        <td colspan="8" class="expand-cell">
+          <div class="traits-grid">
+            ${item.mainTraits.sort((a, b) => b.points - a.points || a.pct - b.pct).map(t => `
+              <div class="trait-tag trait-${t.tier}">
+                <span class="trait-type">${escapeHtml(t.type)}</span>
+                <span class="trait-value">${escapeHtml(t.value)}</span>
+                <span class="trait-pct">${t.pct}%${t.points > 0 ? ' +' + t.points : ''}</span>
+              </div>`).join('')}
+          </div>
+        </td>
+      </tr>
+    `).join('')}
+    </tbody></table>`;
 }
 
 function toggleSpecial(btn) {
   const content = btn.nextElementSibling;
   const isOpen = content.classList.toggle('open');
   const count = content.children.length;
-  btn.innerHTML = isOpen
-    ? `&#9662; Hide ${count} Scoring Special Traits`
-    : `&#9656; Show ${count} Scoring Special Traits`;
+  btn.innerHTML = isOpen ? `&#9662; Hide ${count} Scoring Special Traits` : `&#9656; Show ${count} Scoring Special Traits`;
+}
+
+function toggleTableRow(row) {
+  const tokenId = row.nextElementSibling?.id?.replace('expand-', '');
+  if (tokenId) row.nextElementSibling.classList.toggle('open');
 }
 
 // ─── Sorting ───
 function sortResults(field) {
-  if (field === currentSort) {
-    currentSortDir = currentSortDir === 'desc' ? 'asc' : 'desc';
-  } else {
-    currentSort = field;
-    currentSortDir = field === 'rarity' ? 'asc' : 'desc';
-  }
+  if (field === currentSort) currentSortDir = currentSortDir === 'desc' ? 'asc' : 'desc';
+  else { currentSort = field; currentSortDir = field === 'rarity' ? 'asc' : 'desc'; }
   document.querySelectorAll('.sort-btn[data-sort]').forEach(b => {
     if (b.dataset.sort !== 'toggle') b.classList.toggle('active', b.dataset.sort === field);
   });
   applySorting();
 }
-
-function toggleSortDir() {
-  currentSortDir = currentSortDir === 'desc' ? 'asc' : 'desc';
-  applySorting();
-}
+function toggleSortDir() { currentSortDir = currentSortDir === 'desc' ? 'asc' : 'desc'; applySorting(); }
 
 function applySorting() {
+  // Sort cards
   const grid = document.getElementById('resultsGrid');
   const cards = Array.from(grid.querySelectorAll('.item-card'));
-  cards.sort((a, b) => {
+  const sortFn = makeSortFn(currentSort, currentSortDir);
+  cards.sort((a, b) => sortFn(a.dataset, b.dataset));
+  cards.forEach((card, idx) => { grid.appendChild(card); card.querySelector('.item-idx').textContent = '#' + (idx + 1); });
+
+  // Sort table rows
+  const tbody = document.querySelector('#resultsTable tbody');
+  if (!tbody) return;
+  const rowPairs = [];
+  const rows = Array.from(tbody.children);
+  for (let i = 0; i < rows.length; i += 2) {
+    if (rows[i] && rows[i + 1]) rowPairs.push([rows[i], rows[i + 1]]);
+  }
+  rowPairs.sort((a, b) => sortFn(a[0].dataset, b[0].dataset));
+  rowPairs.forEach(([main, expand], idx) => {
+    tbody.appendChild(main);
+    tbody.appendChild(expand);
+    main.querySelector('.tbl-idx').textContent = idx + 1;
+  });
+}
+
+function makeSortFn(field, dir) {
+  return (a, b) => {
     let va, vb;
-    switch (currentSort) {
-      case 'score': va = +a.dataset.score; vb = +b.dataset.score; break;
-      case 'price': va = +a.dataset.price; vb = +b.dataset.price; break;
-      case 'rarity': va = +a.dataset.rarity; vb = +b.dataset.rarity; break;
-      default: va = +a.dataset.score; vb = +b.dataset.score;
+    switch (field) {
+      case 'score': va = +a.score; vb = +b.score; break;
+      case 'value': va = +a.value; vb = +b.value; break;
+      case 'price': va = +a.price; vb = +b.price; break;
+      case 'rarity': va = +a.rarity; vb = +b.rarity; break;
+      default: va = +a.score; vb = +b.score;
     }
-    return currentSortDir === 'desc' ? vb - va : va - vb;
-  });
-  cards.forEach((card, idx) => {
-    grid.appendChild(card);
-    card.querySelector('.item-idx').textContent = '#' + (idx + 1);
-  });
+    return dir === 'desc' ? vb - va : va - vb;
+  };
+}
+
+// ─── CSV Export ───
+function exportCSV() {
+  if (scoredItems.length === 0) return;
+  const headers = ['Rank', 'Name', 'Token ID', 'Score', 'Value (pts/ETH)', 'Price', 'Currency', 'OS Rarity Rank', 'Orange Traits', 'Purple Traits', 'Blue Traits', 'Is Bargain', 'OpenSea URL'];
+  const rows = scoredItems.map((item, idx) => [
+    idx + 1, `"${item.name}"`, item.tokenId, item.totalScore,
+    item.valueScore ?? '', item.price != null ? formatPrice(item.price) : '',
+    item.currency, item.rarityRank || '', item.orangeCount, item.purpleCount, item.blueCount,
+    item.isBargain ? 'Yes' : '', `https://opensea.io/assets/${lastChain}/${lastContract}/${item.tokenId}`
+  ]);
+  const csv = [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
+  const blob = new Blob([csv], { type: 'text/csv' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `rarity_scores_${parseSlug(document.getElementById('collectionInput').value) || 'export'}.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
 }
 
 // ─── Init ───
+loadTheme();
 loadApiKey();
+loadLastCollection();
 </script>
 
 </body>
