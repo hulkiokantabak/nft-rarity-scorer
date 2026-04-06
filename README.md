@@ -1,31 +1,31 @@
 # NFT Rarity Scorer
 
-Score NFT traits by rarity tiers using OpenSea data. Runs entirely in the browser.
+Score any OpenSea NFT collection by trait rarity. Instantly, in your browser.
 
-## [>>> USE THE APP <<<](https://hulkiokantabak.github.io/nft-rarity-scorer/)
+## [>>> OPEN TOOL <<<](https://hulkiokantabak.github.io/nft-rarity-scorer/)
 
-No download needed — runs in your browser.
+No wallet needed. No download. Just paste a collection slug and score.
 
 ## How to Use
 
-1. Enter your OpenSea API key
-2. Paste a collection URL or slug
-3. Configure rarity tiers and scoring thresholds
-4. Analyze — see rarity scores, find bargains, export data
+- Enter an OpenSea collection slug (the part after `opensea.io/collection/`)
+- Choose Standard tiers or define your own Custom tier system
+- Set thresholds, colours, and point values per tier
+- Score all listed items — or browse the full collection
+- Export results to CSV
 
 ## Features
 
-- Rarity scoring with customizable tiers
-- Card view and table view for results
-- Score distribution histogram
-- Highlights "good value" items (bargains)
+- Standard scoring: Common / Uncommon / Rare / Legendary
+- Custom scoring: up to 10 user-defined tiers with custom names, colours, and thresholds
+- Missing trait scoring option
 - CSV export
-- Shareable URLs with encoded parameters
-- Dark and light themes
-- 100% client-side — your API key stays in your browser
+- Shareable URLs — configuration serialised into query params
+- Dark / Light theme toggle
+- Reads from OpenSea public API — no auth required
 
-## Use It
+## Open It
 
 **https://hulkiokantabak.github.io/nft-rarity-scorer/**
 
-No server, no backend — just paste and analyze.
+Built with vanilla JavaScript. No frameworks, no build step.
