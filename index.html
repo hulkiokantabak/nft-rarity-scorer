@@ -481,6 +481,26 @@ let renderParams = {}; // cached params for re-rendering
 let traitWeights = new Map(); // traitType -> multiplier
 let cachedFetchData = null; // {items, traitCounts, totalSupply, thresholds, points, allTraitTypes, slug, chain, contractAddress}
 
+// Progress-bar phase boundaries for the top-level analyze() flow.
+// Internal fetchers (fetchListingPrices, enrichItems) accept their own
+// progressStart/progressEnd params so they can be reused in Listed vs All vs parallel paths.
+const PROGRESS = {
+  collectionMeta: 5,
+  traitData: 10,
+  itemsFetchStart: 15,
+  // All-mode parallel phase: listings + enrichment run concurrently across this span
+  parallelStart: 55,
+  parallelEnd: 90,
+  // Listed-mode ranges
+  listedPricesStart: 25,
+  listedPricesEnd: 55,
+  // Owner resolution (both modes)
+  ownersStart: 90,
+  ownersEnd: 95,
+  scoring: 95,
+  done: 100
+};
+
 // ─── Tier Mode ───
 function setTierMode(mode) {
   currentTierMode = mode;
@@ -842,7 +862,7 @@ async function analyze() {
 
   try {
     // Step 1: Collection info
-    setProgress(5, 'Fetching collection info...');
+    setProgress(PROGRESS.collectionMeta, 'Fetching collection info...');
     const colData = await apiGet(`https://api.opensea.io/api/v2/collections/${slug}`, apiKey);
     lastColData = colData;
     const totalSupply = colData.total_supply || 0;
@@ -861,7 +881,7 @@ async function analyze() {
     showCollectionInfo(colData, totalSupply);
 
     // Step 2: Traits (rarity counts)
-    setProgress(10, 'Fetching trait data...');
+    setProgress(PROGRESS.traitData, 'Fetching trait data...');
     let traitCounts = {};
     try {
       const traitData = await apiGet(`https://api.opensea.io/api/v2/collections/${slug}/traits`, apiKey);
@@ -879,7 +899,7 @@ async function analyze() {
     const hasTraitCounts = Object.keys(traitCounts).length > 0;
 
     if (!hasTraitCounts) {
-      setProgress(15, 'Building trait rarity table from all items...');
+      setProgress(PROGRESS.itemsFetchStart, 'Building trait rarity table from all items...');
       const allNfts = await fetchAllItems(slug, apiKey, totalSupply);
       traitCounts = {};
       for (const nft of allNfts) {
@@ -891,16 +911,16 @@ async function analyze() {
         // Progressive render #1: items have traits, no prices/owners/rarity yet.
         renderProgressive(allNfts, traitCounts, totalSupply, slug, chain, contractAddress, thresholds, points);
         // Prices and enrichment are independent — run in parallel to save wall time.
-        setProgress(55, 'Fetching listing prices and enriching items in parallel...');
+        setProgress(PROGRESS.parallelStart, 'Fetching listing prices and enriching items in parallel...');
         const [priceMap] = await Promise.all([
-          fetchListingPrices(slug, apiKey, 55, 55),
-          enrichItems(allNfts, chain, contractAddress, apiKey, 55, 90)
+          fetchListingPrices(slug, apiKey, PROGRESS.parallelStart, PROGRESS.parallelStart),
+          enrichItems(allNfts, chain, contractAddress, apiKey, PROGRESS.parallelStart, PROGRESS.parallelEnd)
         ]);
         applyListingPrices(allNfts, priceMap);
         // Progressive render #2: items now have prices, rarity, owner addresses (no ENS names yet).
         renderProgressive(allNfts, traitCounts, totalSupply, slug, chain, contractAddress, thresholds, points);
         await resolveOwnerNames(allNfts, apiKey);
-        setProgress(95, 'Scoring items...');
+        setProgress(PROGRESS.scoring, 'Scoring items...');
         const allTraitTypes = buildTraitTypes(traitCounts);
         const scoreMissing = document.getElementById('scoreMissing').checked;
         const missingCountByType = buildMissingCountByType(traitCounts, totalSupply);
@@ -916,15 +936,15 @@ async function analyze() {
     if (currentMode === 'listed') {
       items = await fetchListedItems(slug, chain, contractAddress, apiKey);
     } else {
-      setProgress(15, 'Fetching all items...');
+      setProgress(PROGRESS.itemsFetchStart, 'Fetching all items...');
       items = await fetchAllItems(slug, apiKey, totalSupply);
       // Progressive render #1: items have traits, no prices/owners/rarity yet.
       renderProgressive(items, traitCounts, totalSupply, slug, chain, contractAddress, thresholds, points);
       // Prices and enrichment are independent — run in parallel to save wall time.
-      setProgress(55, 'Fetching listing prices and enriching items in parallel...');
+      setProgress(PROGRESS.parallelStart, 'Fetching listing prices and enriching items in parallel...');
       const [priceMap] = await Promise.all([
-        fetchListingPrices(slug, apiKey, 55, 55),
-        enrichItems(items, chain, contractAddress, apiKey, 55, 90)
+        fetchListingPrices(slug, apiKey, PROGRESS.parallelStart, PROGRESS.parallelStart),
+        enrichItems(items, chain, contractAddress, apiKey, PROGRESS.parallelStart, PROGRESS.parallelEnd)
       ]);
       applyListingPrices(items, priceMap);
       // Progressive render #2: items now have prices, rarity, owner addresses (no ENS names yet).
@@ -934,7 +954,7 @@ async function analyze() {
     if (items.length === 0) throw new Error('No items found. The collection may have no active listings.');
 
     await resolveOwnerNames(items, apiKey);
-    setProgress(95, 'Scoring items...');
+    setProgress(PROGRESS.scoring, 'Scoring items...');
     const allTraitTypes = buildTraitTypes(traitCounts);
     const scoreMissing = document.getElementById('scoreMissing').checked;
     const missingCountByType = buildMissingCountByType(traitCounts, totalSupply);
@@ -981,7 +1001,7 @@ function finishAnalysis(items, totalSupply, slug, chain, contractAddress, thresh
   items.sort((a, b) => b.totalScore - a.totalScore);
   scoredItems = items;
 
-  if (isFinal) setProgress(100, 'Done!');
+  if (isFinal) setProgress(PROGRESS.done, 'Done!');
   renderResults(items, totalSupply, slug, chain, contractAddress, thresholds, points, minScore, maxScore);
   if (isFinal) encodeStateToURL();
 }
@@ -1052,7 +1072,7 @@ function applyListingPrices(items, tokenMap) {
 
 // ─── Fetch Listed Items ───
 async function fetchListedItems(slug, chain, contractAddress, apiKey) {
-  const tokenMap = await fetchListingPrices(slug, apiKey, 25, 55);
+  const tokenMap = await fetchListingPrices(slug, apiKey, PROGRESS.listedPricesStart, PROGRESS.listedPricesEnd);
 
   const tokenIds = Object.keys(tokenMap);
   setProgress(55, `Found ${tokenIds.length} unique listed items. Fetching traits...`);
