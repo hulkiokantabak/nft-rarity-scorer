@@ -290,6 +290,37 @@
 
   /* Thumbnail toggle */
   .thumbs-off .item-thumb, .thumbs-off .tbl-thumb { display: none !important; }
+
+  /* Tab bar */
+  .tab-bar {
+    display: flex; gap: 0; max-width: 960px; margin: 12px auto 0;
+    border-bottom: 1px solid var(--border);
+  }
+  .tab-btn {
+    padding: 10px 24px; background: transparent; color: var(--text-muted);
+    border: none; border-bottom: 2px solid transparent; cursor: pointer;
+    font-size: 0.9rem; font-weight: 600; transition: all 0.15s;
+  }
+  .tab-btn:hover { color: var(--text); }
+  .tab-btn.active { color: var(--accent); border-bottom-color: var(--accent); }
+  .tab-content { display: none; }
+  .tab-content.active { display: block; }
+
+  /* Compare tab results: two side-by-side stat cards */
+  .compare-results { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; max-width: 960px; margin: 10px auto; }
+  .compare-card {
+    background: var(--card-bg); border: 1px solid var(--border); border-radius: 10px;
+    padding: 14px; display: flex; flex-direction: column; gap: 8px;
+  }
+  .compare-card h3 { font-size: 1rem; margin: 0; display: flex; align-items: center; gap: 8px; }
+  .compare-card .col-sub { font-size: 0.72rem; color: var(--text-muted); }
+  .compare-stat-row { display: flex; gap: 12px; flex-wrap: wrap; }
+  .compare-stat { text-align: center; padding: 2px 8px; }
+  .compare-stat .num { font-size: 1.1rem; font-weight: 700; }
+  .compare-stat .lbl { font-size: 0.65rem; color: var(--text-muted); text-transform: uppercase; }
+  @media (max-width: 720px) {
+    .compare-results { grid-template-columns: 1fr; }
+  }
 </style>
 </head>
 <body>
@@ -312,6 +343,16 @@
     <span id="keyStatus" class="key-status"></span>
   </div>
 </div>
+
+<!-- Tab bar -->
+<div class="tab-bar">
+  <button class="tab-btn active" data-tab="analyze" onclick="setTab('analyze')">Analyze</button>
+  <button class="tab-btn" data-tab="compare" onclick="setTab('compare')">Compare</button>
+  <button class="tab-btn" data-tab="portfolio" onclick="setTab('portfolio')">Portfolio</button>
+</div>
+
+<!-- Analyze tab -->
+<div class="tab-content active" data-tab="analyze">
 
 <!-- Query -->
 <div class="panel">
@@ -393,9 +434,37 @@
   </div>
 </div>
 
-<!-- Score a Wallet's Portfolio (optional) -->
+</div>
+<!-- /Analyze tab -->
+
+<!-- Compare tab -->
+<div class="tab-content" data-tab="compare">
 <div class="panel">
-  <div class="panel-title">Score a Wallet's Portfolio (Optional)</div>
+  <div class="panel-title">Compare Two Collections</div>
+  <div class="form-row">
+    <div class="form-group wide">
+      <label>Collection A &mdash; URL or Slug</label>
+      <input type="text" id="compareSlugA" placeholder="https://opensea.io/collection/... or the-slug">
+    </div>
+    <div class="form-group wide">
+      <label>Collection B &mdash; URL or Slug</label>
+      <input type="text" id="compareSlugB" placeholder="https://opensea.io/collection/... or the-slug">
+    </div>
+  </div>
+  <div style="margin-top: 12px; text-align: center;">
+    <button class="btn btn-analyze" id="compareBtn" onclick="analyzeCompareTab()">Compare</button>
+    <button class="btn btn-secondary" onclick="clearCompareTab()" style="padding:8px 16px;">Clear</button>
+  </div>
+  <div style="font-size:0.7rem; color:var(--text-muted); margin-top:10px; text-align:center;">Runs both in Listed mode and scores them with your current tier config (set in Analyze). Side-by-side stats only &mdash; no item cards.</div>
+</div>
+<div id="compareResultsArea" class="compare-results" style="display:none;"></div>
+</div>
+<!-- /Compare tab -->
+
+<!-- Portfolio tab -->
+<div class="tab-content" data-tab="portfolio">
+<div class="panel">
+  <div class="panel-title">Score a Wallet's Portfolio</div>
   <div class="form-row" style="align-items: flex-end;">
     <div class="form-group wide">
       <label>Wallet Address or ENS</label>
@@ -403,22 +472,10 @@
     </div>
     <button class="btn btn-secondary" id="portfolioBtn" onclick="analyzePortfolio()" style="padding:8px 16px;">Score Portfolio</button>
   </div>
-  <div style="font-size:0.7rem; color:var(--text-muted); margin-top:6px;">Fetches the wallet's NFTs on Ethereum, groups by collection (top 15 by count), and scores each with your current tier config. Replaces any current results.</div>
+  <div style="font-size:0.7rem; color:var(--text-muted); margin-top:6px;">Fetches the wallet's NFTs on Ethereum, groups by collection (top 15 by count), and scores each with your current tier config. Results render below the tabs.</div>
 </div>
-
-<!-- Compare with another collection (optional) -->
-<div class="panel">
-  <div class="panel-title">Compare With Another Collection (Optional)</div>
-  <div class="form-row" style="align-items: flex-end;">
-    <div class="form-group wide">
-      <label>OpenSea Collection URL or Slug</label>
-      <input type="text" id="compareInput" placeholder="https://opensea.io/collection/other or just the-slug">
-    </div>
-    <button class="btn btn-secondary" id="compareBtn" onclick="analyzeCompare()" style="padding:8px 16px;">Compare</button>
-    <button class="btn btn-secondary" onclick="clearCompare()" title="Clear comparison" style="padding:8px 12px;">Clear</button>
-  </div>
-  <div style="font-size:0.7rem; color:var(--text-muted); margin-top:6px;">Uses the same tier config + options as the primary analysis. Runs in Listed mode (fast). Analyze a primary collection first.</div>
 </div>
+<!-- /Portfolio tab -->
 
 <!-- Trait Weights (appears after first analysis) -->
 <div class="panel" id="weightsPanel" style="display:none;">
@@ -556,6 +613,17 @@ const PROGRESS = {
   scoring: 95,
   done: 100
 };
+
+// ─── Tabs ───
+function setTab(name) {
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.toggle('active', b.dataset.tab === name));
+  document.querySelectorAll('.tab-content').forEach(c => c.classList.toggle('active', c.dataset.tab === name));
+  try { localStorage.setItem('nft_scorer_active_tab', name); } catch {}
+}
+function loadActiveTab() {
+  const saved = localStorage.getItem('nft_scorer_active_tab') || 'analyze';
+  if (['analyze', 'compare', 'portfolio'].includes(saved)) setTab(saved);
+}
 
 // ─── Tier Mode ───
 function setTierMode(mode) {
@@ -1494,86 +1562,54 @@ async function analyzePortfolio() {
   }
 }
 
-// ─── Compare Collection ───
-async function analyzeCompare() {
+// ─── Compare Tab (two-input self-contained comparison) ───
+function getCurrentTierConfig() {
+  let thresholds, points;
+  if (currentTierMode === 'standard') {
+    thresholds = [
+      parseFloat(document.getElementById('thresh1').value) || 2,
+      parseFloat(document.getElementById('thresh2').value) || 5,
+      parseFloat(document.getElementById('thresh3').value) || 20
+    ];
+    points = [
+      Math.max(0, parseInt(document.getElementById('points1').value) || 7),
+      Math.max(0, parseInt(document.getElementById('points2').value) || 3),
+      Math.max(0, parseInt(document.getElementById('points3').value) || 1)
+    ];
+  } else {
+    const custom = getCustomTiers();
+    if (custom.length === 0) return { thresholds: [2, 5, 20], points: [7, 3, 1] };
+    thresholds = custom.map(t => t.threshold);
+    points = custom.map(t => t.points);
+  }
+  return { thresholds, points };
+}
+
+async function analyzeCompareTab() {
   if (isRunning) return;
   hideError();
-  if (!cachedFetchData) { showError('Analyze the primary collection first, then compare.'); return; }
   const apiKey = getApiKey();
   if (!apiKey) { showError('Please enter your OpenSea API key first.'); return; }
-  const slug = parseSlug(document.getElementById('compareInput').value);
-  if (!slug) { showError('Enter a valid OpenSea collection URL or slug to compare.'); return; }
-  if (slug === cachedFetchData.slug) { showError('Compare collection must differ from the primary.'); return; }
+  const slugA = parseSlug(document.getElementById('compareSlugA').value);
+  const slugB = parseSlug(document.getElementById('compareSlugB').value);
+  if (!slugA) { showError('Enter a valid Collection A slug.'); return; }
+  if (!slugB) { showError('Enter a valid Collection B slug.'); return; }
+  if (slugA === slugB) { showError('Collections A and B must differ.'); return; }
 
+  const tierConfig = getCurrentTierConfig();
   isRunning = true;
   const btn = document.getElementById('compareBtn');
   btn.disabled = true;
   btn.textContent = 'Comparing...';
   abortController = new AbortController();
   showProgress();
+  document.getElementById('compareResultsArea').style.display = 'none';
 
   try {
-    setProgress(PROGRESS.collectionMeta, 'Fetching compare collection info...');
-    const colData = await apiGet(`https://api.opensea.io/api/v2/collections/${slug}`, apiKey);
-    const totalSupply = colData.total_supply || 0;
-    const contracts = colData.contracts || [];
-    const chain = contracts[0]?.chain || 'ethereum';
-    const contractAddress = contracts[0]?.address || '';
-    if (!totalSupply) throw new Error('Could not determine compare collection total supply.');
-    if (!contractAddress) throw new Error('Could not determine compare contract address.');
-
-    setProgress(PROGRESS.traitData, 'Fetching compare trait data...');
-    let traitCounts = {};
-    try {
-      const traitData = await apiGet(`https://api.opensea.io/api/v2/collections/${slug}/traits`, apiKey);
-      for (const [type, values] of Object.entries(traitData)) {
-        if (typeof values === 'object' && values !== null) {
-          for (const [val, count] of Object.entries(values)) {
-            if (typeof count === 'number') traitCounts[`${type}::${val}`] = count;
-          }
-        }
-      }
-    } catch {}
-
-    const items = await fetchListedItems(slug, chain, contractAddress, apiKey);
-    if (items.length === 0) throw new Error('No listed items in compare collection.');
-
-    if (Object.keys(traitCounts).length === 0) {
-      for (const it of items) {
-        for (const t of it.traits) traitCounts[`${t.type}::${t.value}`] = (traitCounts[`${t.type}::${t.value}`] || 0) + 1;
-      }
-    }
-
-    setProgress(PROGRESS.scoring, 'Scoring compare items...');
-    const d = cachedFetchData;
-    const allTraitTypes = buildTraitTypes(traitCounts);
-    const scoreMissing = document.getElementById('scoreMissing').checked;
-    const missingCountByType = buildMissingCountByType(traitCounts, totalSupply);
-    const scorePairs = document.getElementById('scorePairs').checked;
-    const pairCounts = scorePairs ? buildPairCounts(items) : null;
-    const scored = items.map(item => scoreItem(item, traitCounts, totalSupply, d.thresholds, d.points, allTraitTypes, scoreMissing, missingCountByType, scorePairs, pairCounts));
-
-    const scores = scored.map(i => i.totalScore);
-    const listed = scored.filter(i => i.price != null && i.price > 0);
-    let floorPrice = null, floorCurrency = null;
-    if (listed.length > 0) {
-      const f = listed.reduce((a, b) => a.price <= b.price ? a : b);
-      floorPrice = f.price;
-      floorCurrency = f.currency || 'ETH';
-    }
-
-    compareResult = {
-      slug, totalSupply,
-      name: colData.name || slug,
-      count: scored.length,
-      topScore: Math.max(...scores),
-      avgScore: Math.round(scores.reduce((s, v) => s + v, 0) / scores.length),
-      lowScore: Math.min(...scores),
-      floorPrice, floorCurrency,
-      scoredItems: scored
-    };
+    const A = await runCompareAnalysis(slugA, apiKey, tierConfig, 0, 48);
+    const B = await runCompareAnalysis(slugB, apiKey, tierConfig, 50, 98);
+    renderCompareTabResults(A, B);
     setProgress(PROGRESS.done, 'Compare complete!');
-    renderCompareStats();
   } catch (e) {
     if (e.name === 'AbortError') showError('Compare cancelled.');
     else showError(e.message);
@@ -1585,6 +1621,133 @@ async function analyzeCompare() {
   }
 }
 
+async function runCompareAnalysis(slug, apiKey, tierConfig, pStart, pEnd) {
+  const span = pEnd - pStart;
+  setProgress(pStart, `[${slug}] fetching collection info...`);
+  const colData = await apiGet(`https://api.opensea.io/api/v2/collections/${slug}`, apiKey);
+  const totalSupply = colData.total_supply || 0;
+  const contracts = colData.contracts || [];
+  const chain = contracts[0]?.chain || 'ethereum';
+  const contractAddress = contracts[0]?.address || '';
+  if (!totalSupply) throw new Error(`${slug}: could not determine total supply`);
+  if (!contractAddress) throw new Error(`${slug}: could not determine contract address`);
+
+  setProgress(pStart + Math.round(span * 0.1), `[${slug}] fetching trait data...`);
+  let traitCounts = {};
+  try {
+    const traitData = await apiGet(`https://api.opensea.io/api/v2/collections/${slug}/traits`, apiKey);
+    for (const [type, values] of Object.entries(traitData)) {
+      if (typeof values === 'object' && values !== null) {
+        for (const [val, count] of Object.entries(values)) {
+          if (typeof count === 'number') traitCounts[`${type}::${val}`] = count;
+        }
+      }
+    }
+  } catch {}
+
+  setProgress(pStart + Math.round(span * 0.2), `[${slug}] fetching listed items...`);
+  const items = await fetchListedItems(slug, chain, contractAddress, apiKey);
+  if (items.length === 0) throw new Error(`${slug}: no listed items`);
+
+  if (Object.keys(traitCounts).length === 0) {
+    for (const it of items) {
+      for (const t of it.traits) traitCounts[`${t.type}::${t.value}`] = (traitCounts[`${t.type}::${t.value}`] || 0) + 1;
+    }
+  }
+
+  setProgress(pEnd, `[${slug}] scoring...`);
+  const allTraitTypes = buildTraitTypes(traitCounts);
+  const scoreMissing = document.getElementById('scoreMissing').checked;
+  const missingCountByType = buildMissingCountByType(traitCounts, totalSupply);
+  const scorePairs = document.getElementById('scorePairs').checked;
+  const pairCounts = scorePairs ? buildPairCounts(items) : null;
+  const scored = items.map(item => scoreItem(item, traitCounts, totalSupply, tierConfig.thresholds, tierConfig.points, allTraitTypes, scoreMissing, missingCountByType, scorePairs, pairCounts));
+
+  const scores = scored.map(i => i.totalScore);
+  const listed = scored.filter(i => i.price != null && i.price > 0);
+  let floorPrice = null, floorCurrency = null;
+  if (listed.length > 0) {
+    const f = listed.reduce((a, b) => a.price <= b.price ? a : b);
+    floorPrice = f.price;
+    floorCurrency = f.currency || 'ETH';
+  }
+
+  const minS = Math.min(...scores), maxS = Math.max(...scores);
+  const BINS = 12;
+  const binWidth = Math.max(1, (maxS - minS) / BINS);
+  const bins = Array(BINS).fill(0);
+  for (const s of scores) {
+    const idx = Math.min(Math.floor((s - minS) / binWidth), BINS - 1);
+    bins[idx]++;
+  }
+
+  return {
+    slug, totalSupply,
+    name: colData.name || slug,
+    imageUrl: colData.image_url || '',
+    count: scored.length,
+    topScore: maxS,
+    avgScore: Math.round(scores.reduce((s, v) => s + v, 0) / scores.length),
+    lowScore: minS,
+    floorPrice, floorCurrency,
+    histogram: { min: minS, max: maxS, bins }
+  };
+}
+
+function renderCompareTabResults(A, B) {
+  const el = document.getElementById('compareResultsArea');
+  const cardFor = (r) => {
+    const floor = r.floorPrice != null ? `${formatPrice(r.floorPrice)} ${escapeHtml(r.floorCurrency)}` : '—';
+    const safeImg = r.imageUrl && r.imageUrl.startsWith('https://') ? r.imageUrl : '';
+    return `
+      <div class="compare-card">
+        <h3>
+          ${safeImg ? `<img src="${escapeHtml(safeImg)}" alt="" style="width:28px; height:28px; border-radius:4px; object-fit:cover;">` : ''}
+          <span>${escapeHtml(r.name)}</span>
+        </h3>
+        <div class="col-sub"><a href="https://opensea.io/collection/${encodeURIComponent(r.slug)}" target="_blank" rel="noopener" style="color:var(--accent); text-decoration:none;">${escapeHtml(r.slug)}</a> &middot; ${r.totalSupply} items total</div>
+        <div class="compare-stat-row">
+          <div class="compare-stat"><div class="num">${r.count}</div><div class="lbl">Listed</div></div>
+          <div class="compare-stat"><div class="num">${r.topScore}</div><div class="lbl">Top</div></div>
+          <div class="compare-stat"><div class="num">${r.avgScore}</div><div class="lbl">Avg</div></div>
+          <div class="compare-stat"><div class="num">${r.lowScore}</div><div class="lbl">Low</div></div>
+          <div class="compare-stat"><div class="num">${floor}</div><div class="lbl">Floor</div></div>
+        </div>
+        <div>${renderMiniHistogram(r.histogram)}</div>
+      </div>`;
+  };
+  el.innerHTML = cardFor(A) + cardFor(B);
+  el.style.display = 'grid';
+}
+
+function renderMiniHistogram(h) {
+  if (!h || h.min === h.max) return '';
+  const W = 380, H = 40, gap = 2;
+  const BINS = h.bins.length;
+  const barW = (W - gap * (BINS - 1)) / BINS;
+  const maxCount = Math.max(...h.bins);
+  const binWidth = (h.max - h.min) / BINS;
+  const rects = h.bins.map((count, i) => {
+    const hh = maxCount > 0 ? (count / maxCount) * H : 0;
+    const x = i * (barW + gap);
+    const ratio = i / (BINS - 1 || 1);
+    const color = ratio < 0.33 ? 'var(--score-low)' : ratio < 0.66 ? 'var(--score-mid)' : 'var(--score-high)';
+    const lo = Math.round(h.min + i * binWidth), hi = Math.round(h.min + (i + 1) * binWidth);
+    return `<rect x="${x}" y="${H - hh}" width="${barW}" height="${hh}" fill="${color}" rx="2"><title>Score ${lo}-${hi}: ${count} items</title></rect>`;
+  }).join('');
+  return `<svg viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" style="max-width:100%;">${rects}</svg>`;
+}
+
+function clearCompareTab() {
+  document.getElementById('compareSlugA').value = '';
+  document.getElementById('compareSlugB').value = '';
+  const el = document.getElementById('compareResultsArea');
+  el.style.display = 'none';
+  el.innerHTML = '';
+  hideError();
+}
+
+// Snapshot overlay (in Analyze tab results header) still uses compareResult + renderCompareStats.
 function renderCompareStats() {
   const el = document.getElementById('compareStatsBar');
   if (!el) return;
@@ -1595,7 +1758,7 @@ function renderCompareStats() {
     : '';
   el.innerHTML = `
     <div style="display:flex; align-items:center; gap:6px; justify-content:center; flex-wrap:wrap;">
-      <span style="font-size:0.72rem; color:var(--text-muted); text-transform:uppercase; letter-spacing:1px;">vs</span>
+      <span style="font-size:0.72rem; color:var(--text-muted); text-transform:uppercase; letter-spacing:1px;">overlay</span>
       <strong style="font-size:0.82rem;">${escapeHtml(c.name)}</strong>
       <div class="stat" style="padding:2px 10px;"><div class="num" style="font-size:1rem;">${c.count}</div><div class="lbl">Items</div></div>
       <div class="stat" style="padding:2px 10px;"><div class="num" style="font-size:1rem;">${c.topScore}</div><div class="lbl">Top</div></div>
@@ -1603,17 +1766,15 @@ function renderCompareStats() {
       <div class="stat" style="padding:2px 10px;"><div class="num" style="font-size:1rem;">${c.lowScore}</div><div class="lbl">Low</div></div>
       <div class="stat" style="padding:2px 10px;"><div class="num" style="font-size:1rem;">${c.totalSupply}</div><div class="lbl">Supply</div></div>
       ${floorHtml}
-      <button class="btn btn-secondary" onclick="clearCompare()" style="padding:2px 8px; font-size:0.7rem;">&times; Clear</button>
+      <button class="btn btn-secondary" onclick="clearSnapshotOverlay()" style="padding:2px 8px; font-size:0.7rem;">&times; Clear</button>
     </div>
   `;
   el.style.display = 'block';
 }
 
-function clearCompare() {
+function clearSnapshotOverlay() {
   compareResult = null;
   renderCompareStats();
-  document.getElementById('compareInput').value = '';
-  hideError();
 }
 
 // ─── Scoring ───
@@ -2422,6 +2583,7 @@ loadThumbs();
 loadApiKey();
 loadLastCollection();
 loadOwnerCache();
+loadActiveTab();
 loadStateFromURL();
 </script>
 
