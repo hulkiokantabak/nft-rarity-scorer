@@ -536,6 +536,7 @@
     </div>
     <button class="btn btn-secondary" onclick="exportCSV()" style="font-size:0.78rem; padding:5px 12px;">CSV</button>
     <button class="btn btn-secondary" id="thumbToggle" onclick="toggleThumbs()" style="font-size:0.78rem; padding:5px 12px;">Thumbs</button>
+    <button class="btn btn-secondary" id="copyUrlBtn" onclick="copyShareableUrl()" style="font-size:0.78rem; padding:5px 12px;" title="Copy the current configuration as a shareable link">Copy Link</button>
   </div>
   <div class="controls-row" style="margin-top:6px;">
     <input type="text" id="filterSearch" placeholder="Search name, trait, owner..." oninput="applyFilters()" style="background:var(--bg); border:1px solid var(--border); color:var(--text); padding:5px 10px; border-radius:6px; font-size:0.78rem; flex:1; min-width:160px; outline:none;">
@@ -837,6 +838,16 @@ function setView(view) {
 document.getElementById('thresh1').addEventListener('input', function() { document.getElementById('thresh1_upper').value = this.value; });
 document.getElementById('thresh2').addEventListener('input', function() { document.getElementById('thresh2_upper').value = this.value; });
 
+// Re-score instantly when the scoring-option toggles change, if we already have cached primary data.
+// Guards: no concurrent run (isRunning), must have primary cache (cachedFetchData), not currently
+// viewing a portfolio (reScoreWithWeights would otherwise clobber the portfolio view with a
+// primary re-score — same pitfall as the Weights panel and the Snapshots panel).
+function autoReScoreIfReady() {
+  if (!isRunning && cachedFetchData && !viewingPortfolio) reScoreWithWeights();
+}
+document.getElementById('scoreMissing').addEventListener('change', autoReScoreIfReady);
+document.getElementById('scorePairs').addEventListener('change', autoReScoreIfReady);
+
 // ─── Helpers ───
 function parseSlug(input) {
   input = input.trim();
@@ -868,6 +879,9 @@ function showProgress() {
   // so the bar stays visible for the new run.
   if (hideProgressTimer) { clearTimeout(hideProgressTimer); hideProgressTimer = null; }
   document.getElementById('progress').classList.add('visible');
+  // Reset the Cancel button (cancelAnalysis may have disabled it + changed its text during a prior run).
+  const cancelBtn = document.getElementById('cancelBtn');
+  if (cancelBtn) { cancelBtn.textContent = 'Cancel'; cancelBtn.disabled = false; }
   progressStartTime = Date.now();
 }
 function hideProgress() {
@@ -968,6 +982,13 @@ function cancelAnalysis() {
   // user could click Cancel then immediately Analyze and the OLD finally would
   // overwrite the NEW run's isRunning/button state.
   if (abortController) abortController.abort();
+  // Brief visual feedback while the abort propagates through the pending fetches.
+  // showProgress() resets this on the next run; hiding the progress container hides the button.
+  const btn = document.getElementById('cancelBtn');
+  if (btn) {
+    btn.textContent = 'Cancelling...';
+    btn.disabled = true;
+  }
 }
 
 // ─── Main Analysis ───
@@ -1824,6 +1845,7 @@ function renderCompareStats() {
   const floorHtml = c.floorPrice != null
     ? `<div class="stat" style="padding:2px 10px;"><div class="num" style="font-size:1rem;">${formatPrice(c.floorPrice)} ${escapeHtml(c.floorCurrency)}</div><div class="lbl">Floor</div></div>`
     : '';
+  const histHtml = c.histogram ? renderMiniHistogram(c.histogram) : '';
   el.innerHTML = `
     <div style="display:flex; align-items:center; gap:6px; justify-content:center; flex-wrap:wrap;">
       <span style="font-size:0.72rem; color:var(--text-muted); text-transform:uppercase; letter-spacing:1px;">overlay</span>
@@ -1836,6 +1858,7 @@ function renderCompareStats() {
       ${floorHtml}
       <button class="btn btn-secondary" onclick="clearSnapshotOverlay()" style="padding:2px 8px; font-size:0.7rem;">&times; Clear</button>
     </div>
+    ${histHtml ? `<div style="margin-top:4px; text-align:center; opacity:0.85;">${histHtml}</div>` : ''}
   `;
   el.style.display = 'block';
 }
@@ -2401,7 +2424,8 @@ function loadSnapshot(idx) {
     avgScore: s.avgScore,
     lowScore: s.lowScore,
     floorPrice: s.floorPrice,
-    floorCurrency: s.floorCurrency
+    floorCurrency: s.floorCurrency,
+    histogram: s.histogram // pulled through for visual overlay in renderCompareStats
   };
   renderCompareStats();
 }
@@ -2443,7 +2467,8 @@ function buildConfigJSON() {
     tier_mode: currentTierMode,
     score_missing: document.getElementById('scoreMissing').checked,
     score_pairs: document.getElementById('scorePairs').checked,
-    thumbs_visible: thumbsVisible
+    thumbs_visible: thumbsVisible,
+    active_tab: localStorage.getItem('nft_scorer_active_tab') || 'analyze'
   };
   if (currentTierMode === 'standard') {
     config.standard_tiers = {
@@ -2540,6 +2565,10 @@ function applyImportedConfig(config) {
   if (typeof config.thumbs_visible === 'boolean' && config.thumbs_visible !== thumbsVisible) {
     toggleThumbs();
   }
+  // setTab already whitelists acceptable tab names, so an imported config with a bogus value is safe.
+  if (typeof config.active_tab === 'string' && ['analyze', 'compare', 'portfolio'].includes(config.active_tab)) {
+    setTab(config.active_tab);
+  }
   if (config.trait_weights && typeof config.trait_weights === 'object') {
     traitWeights.clear();
     for (const [type, w] of Object.entries(config.trait_weights)) {
@@ -2551,8 +2580,9 @@ function applyImportedConfig(config) {
       const w = traitWeights.get(input.dataset.type);
       if (typeof w === 'number') input.value = w;
     });
-    // Re-score instantly if we have cached data
-    if (cachedFetchData) reScoreWithWeights();
+    // Re-score instantly if we can safely do so. Mirrors the guards in autoReScoreIfReady:
+    // no concurrent run, have primary cache, not viewing a portfolio.
+    if (cachedFetchData && !isRunning && !viewingPortfolio) reScoreWithWeights();
   }
 }
 
@@ -2561,6 +2591,24 @@ function handleImportFile(event) {
   if (file) importConfig(file);
   // Allow re-selecting the same file later
   event.target.value = '';
+}
+
+// ─── Copy shareable URL ───
+async function copyShareableUrl() {
+  const btn = document.getElementById('copyUrlBtn');
+  try {
+    // location.href is read from the tab itself — no cross-origin access.
+    // Requires a secure context (https / localhost); the GitHub Pages deploy is https.
+    await navigator.clipboard.writeText(location.href);
+    if (btn) {
+      const orig = btn.textContent;
+      btn.textContent = 'Copied!';
+      btn.disabled = true;
+      setTimeout(() => { btn.textContent = orig; btn.disabled = false; }, 1500);
+    }
+  } catch (e) {
+    showError('Copy failed — please copy the URL from your address bar. (' + (e.message || 'clipboard unavailable') + ')');
+  }
 }
 
 // ─── Shareable URL ───
