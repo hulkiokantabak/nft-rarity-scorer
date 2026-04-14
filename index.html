@@ -381,6 +381,13 @@
     <button class="btn btn-analyze" id="analyzeBtn" onclick="analyze()">Analyze Collection</button>
     <button class="btn btn-cancel" id="cancelBtn" onclick="cancelAnalysis()" style="display: none;">Cancel</button>
   </div>
+  <div style="margin-top: 8px; display: flex; gap: 8px; justify-content: center; align-items: center; flex-wrap: wrap;">
+    <span style="color:var(--text-muted); font-size:0.72rem;">Full config (collection, tiers, weights, options):</span>
+    <button class="btn btn-secondary" onclick="exportConfig()" style="font-size:0.72rem; padding:4px 10px;" title="Download current scorer config as JSON">Export JSON</button>
+    <label class="btn btn-secondary" style="font-size:0.72rem; padding:4px 10px; cursor:pointer;" title="Load a previously exported config">Import JSON
+      <input type="file" id="configImportInput" accept=".json,application/json" style="display:none;" onchange="handleImportFile(event)">
+    </label>
+  </div>
 </div>
 
 <!-- Trait Weights (appears after first analysis) -->
@@ -1636,6 +1643,132 @@ function exportCSV() {
   a.download = `rarity_scores_${parseSlug(document.getElementById('collectionInput').value) || 'export'}.csv`;
   a.click();
   URL.revokeObjectURL(url);
+}
+
+// ─── Config Export / Import ───
+function buildConfigJSON() {
+  const config = {
+    v: 1,
+    exported_at: new Date().toISOString(),
+    slug: parseSlug(document.getElementById('collectionInput').value) || null,
+    mode: currentMode,
+    tier_mode: currentTierMode,
+    score_missing: document.getElementById('scoreMissing').checked,
+    thumbs_visible: thumbsVisible
+  };
+  if (currentTierMode === 'standard') {
+    config.standard_tiers = {
+      thresholds: [
+        parseFloat(document.getElementById('thresh1').value) || 2,
+        parseFloat(document.getElementById('thresh2').value) || 5,
+        parseFloat(document.getElementById('thresh3').value) || 20
+      ],
+      points: [
+        parseInt(document.getElementById('points1').value) || 7,
+        parseInt(document.getElementById('points2').value) || 3,
+        parseInt(document.getElementById('points3').value) || 1
+      ]
+    };
+  } else {
+    config.custom_tiers = getCustomTiers();
+  }
+  // Only export non-default weights
+  const weights = {};
+  traitWeights.forEach((w, type) => { if (w !== 1.0) weights[type] = w; });
+  if (Object.keys(weights).length > 0) config.trait_weights = weights;
+  return config;
+}
+
+function exportConfig() {
+  const config = buildConfigJSON();
+  const json = JSON.stringify(config, null, 2);
+  const blob = new Blob([json], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  const slugPart = config.slug ? `_${config.slug}` : '';
+  a.download = `nft_scorer_config${slugPart}.json`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+async function importConfig(file) {
+  try {
+    const text = await file.text();
+    const config = JSON.parse(text);
+    if (!config || typeof config !== 'object') throw new Error('Config file is not a JSON object');
+    applyImportedConfig(config);
+    hideError();
+  } catch (e) {
+    showError('Failed to import config: ' + e.message);
+  }
+}
+
+function applyImportedConfig(config) {
+  if (typeof config.slug === 'string' && config.slug) {
+    document.getElementById('collectionInput').value = config.slug;
+  }
+  if (config.mode === 'listed' || config.mode === 'all') setMode(config.mode);
+  if (config.tier_mode === 'standard' || config.tier_mode === 'custom') {
+    setTierMode(config.tier_mode);
+    if (config.tier_mode === 'standard' && config.standard_tiers) {
+      const t = config.standard_tiers.thresholds;
+      const p = config.standard_tiers.points;
+      if (Array.isArray(t) && t.length === 3) {
+        document.getElementById('thresh1').value = t[0];
+        document.getElementById('thresh2').value = t[1];
+        document.getElementById('thresh3').value = t[2];
+        document.getElementById('thresh1_upper').value = t[0];
+        document.getElementById('thresh2_upper').value = t[1];
+      }
+      if (Array.isArray(p) && p.length === 3) {
+        document.getElementById('points1').value = p[0];
+        document.getElementById('points2').value = p[1];
+        document.getElementById('points3').value = p[2];
+      }
+    }
+    if (config.tier_mode === 'custom' && Array.isArray(config.custom_tiers)) {
+      const container = document.getElementById('customTiers');
+      container.querySelectorAll('.custom-tier-row').forEach(r => r.remove());
+      for (const t of config.custom_tiers) {
+        if (t && typeof t === 'object') {
+          addCustomTier(
+            String(t.name || 'Tier').slice(0, 20),
+            Number(t.threshold) || 0,
+            Number(t.points) || 0,
+            String(t.color || '#3498db')
+          );
+        }
+      }
+    }
+  }
+  if (typeof config.score_missing === 'boolean') {
+    document.getElementById('scoreMissing').checked = config.score_missing;
+  }
+  if (typeof config.thumbs_visible === 'boolean' && config.thumbs_visible !== thumbsVisible) {
+    toggleThumbs();
+  }
+  if (config.trait_weights && typeof config.trait_weights === 'object') {
+    traitWeights.clear();
+    for (const [type, w] of Object.entries(config.trait_weights)) {
+      const num = parseFloat(w);
+      if (!isNaN(num) && num >= 0) traitWeights.set(type, num);
+    }
+    // Mirror into weight inputs if the weights panel is populated
+    document.querySelectorAll('.weight-input').forEach(input => {
+      const w = traitWeights.get(input.dataset.type);
+      if (typeof w === 'number') input.value = w;
+    });
+    // Re-score instantly if we have cached data
+    if (cachedFetchData) reScoreWithWeights();
+  }
+}
+
+function handleImportFile(event) {
+  const file = event.target.files && event.target.files[0];
+  if (file) importConfig(file);
+  // Allow re-selecting the same file later
+  event.target.value = '';
 }
 
 // ─── Shareable URL ───
