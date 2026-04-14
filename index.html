@@ -888,6 +888,8 @@ async function analyze() {
       console.log('Built trait counts from', allNfts.length, 'items,', Object.keys(traitCounts).length, 'unique trait pairs');
 
       if (currentMode === 'all') {
+        // Progressive render #1: items have traits, no prices/owners/rarity yet.
+        renderProgressive(allNfts, traitCounts, totalSupply, slug, chain, contractAddress, thresholds, points);
         // Prices and enrichment are independent — run in parallel to save wall time.
         setProgress(55, 'Fetching listing prices and enriching items in parallel...');
         const [priceMap] = await Promise.all([
@@ -895,6 +897,8 @@ async function analyze() {
           enrichItems(allNfts, chain, contractAddress, apiKey, 55, 90)
         ]);
         applyListingPrices(allNfts, priceMap);
+        // Progressive render #2: items now have prices, rarity, owner addresses (no ENS names yet).
+        renderProgressive(allNfts, traitCounts, totalSupply, slug, chain, contractAddress, thresholds, points);
         await resolveOwnerNames(allNfts, apiKey);
         setProgress(95, 'Scoring items...');
         const allTraitTypes = buildTraitTypes(traitCounts);
@@ -914,6 +918,8 @@ async function analyze() {
     } else {
       setProgress(15, 'Fetching all items...');
       items = await fetchAllItems(slug, apiKey, totalSupply);
+      // Progressive render #1: items have traits, no prices/owners/rarity yet.
+      renderProgressive(items, traitCounts, totalSupply, slug, chain, contractAddress, thresholds, points);
       // Prices and enrichment are independent — run in parallel to save wall time.
       setProgress(55, 'Fetching listing prices and enriching items in parallel...');
       const [priceMap] = await Promise.all([
@@ -921,6 +927,8 @@ async function analyze() {
         enrichItems(items, chain, contractAddress, apiKey, 55, 90)
       ]);
       applyListingPrices(items, priceMap);
+      // Progressive render #2: items now have prices, rarity, owner addresses (no ENS names yet).
+      renderProgressive(items, traitCounts, totalSupply, slug, chain, contractAddress, thresholds, points);
     }
 
     if (items.length === 0) throw new Error('No items found. The collection may have no active listings.');
@@ -947,7 +955,8 @@ async function analyze() {
   }
 }
 
-function finishAnalysis(items, totalSupply, slug, chain, contractAddress, thresholds, points) {
+function finishAnalysis(items, totalSupply, slug, chain, contractAddress, thresholds, points, isFinal = true) {
+  if (items.length === 0) return;
   // Compute value scores and bargain flags
   const scores = items.map(i => i.totalScore);
   const minScore = Math.min(...scores);
@@ -972,9 +981,22 @@ function finishAnalysis(items, totalSupply, slug, chain, contractAddress, thresh
   items.sort((a, b) => b.totalScore - a.totalScore);
   scoredItems = items;
 
-  setProgress(100, 'Done!');
+  if (isFinal) setProgress(100, 'Done!');
   renderResults(items, totalSupply, slug, chain, contractAddress, thresholds, points, minScore, maxScore);
-  encodeStateToURL();
+  if (isFinal) encodeStateToURL();
+}
+
+// Progressive render: score current raw items with current traitCounts and
+// paint results without marking the analysis complete. Safe to call multiple
+// times as more data comes in (prices, owners, rarity).
+function renderProgressive(rawItems, traitCounts, totalSupply, slug, chain, contractAddress, thresholds, points) {
+  if (!rawItems || rawItems.length === 0) return;
+  if (!traitCounts || Object.keys(traitCounts).length === 0) return;
+  const allTraitTypes = buildTraitTypes(traitCounts);
+  const scoreMissing = document.getElementById('scoreMissing').checked;
+  const missingCountByType = buildMissingCountByType(traitCounts, totalSupply);
+  const scored = rawItems.map(item => scoreItem(item, traitCounts, totalSupply, thresholds, points, allTraitTypes, scoreMissing, missingCountByType));
+  finishAnalysis(scored, totalSupply, slug, chain, contractAddress, thresholds, points, false);
 }
 
 function showCollectionInfo(colData, totalSupply) {
