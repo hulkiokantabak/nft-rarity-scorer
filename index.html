@@ -888,9 +888,13 @@ async function analyze() {
       console.log('Built trait counts from', allNfts.length, 'items,', Object.keys(traitCounts).length, 'unique trait pairs');
 
       if (currentMode === 'all') {
-        const priceMap = await fetchListingPrices(slug, apiKey, 55, 65);
+        // Prices and enrichment are independent — run in parallel to save wall time.
+        setProgress(55, 'Fetching listing prices and enriching items in parallel...');
+        const [priceMap] = await Promise.all([
+          fetchListingPrices(slug, apiKey, 55, 55),
+          enrichItems(allNfts, chain, contractAddress, apiKey, 55, 90)
+        ]);
         applyListingPrices(allNfts, priceMap);
-        await enrichItems(allNfts, chain, contractAddress, apiKey);
         await resolveOwnerNames(allNfts, apiKey);
         setProgress(95, 'Scoring items...');
         const allTraitTypes = buildTraitTypes(traitCounts);
@@ -910,9 +914,13 @@ async function analyze() {
     } else {
       setProgress(15, 'Fetching all items...');
       items = await fetchAllItems(slug, apiKey, totalSupply);
-      const priceMap = await fetchListingPrices(slug, apiKey, 55, 65);
+      // Prices and enrichment are independent — run in parallel to save wall time.
+      setProgress(55, 'Fetching listing prices and enriching items in parallel...');
+      const [priceMap] = await Promise.all([
+        fetchListingPrices(slug, apiKey, 55, 55),
+        enrichItems(items, chain, contractAddress, apiKey, 55, 90)
+      ]);
       applyListingPrices(items, priceMap);
-      await enrichItems(items, chain, contractAddress, apiKey);
     }
 
     if (items.length === 0) throw new Error('No items found. The collection may have no active listings.');
@@ -1146,8 +1154,9 @@ function applyOwnerNames(items) {
 }
 
 // ─── Enrich All-Mode Items (owner + rarity) ───
-async function enrichItems(items, chain, contractAddress, apiKey) {
+async function enrichItems(items, chain, contractAddress, apiKey, progressStart = 65, progressEnd = 90) {
   const batchSize = 10;
+  const span = progressEnd - progressStart;
   for (let i = 0; i < items.length; i += batchSize) {
     const batch = items.slice(i, i + batchSize);
     await Promise.allSettled(batch.map(async (item) => {
@@ -1158,8 +1167,9 @@ async function enrichItems(items, chain, contractAddress, apiKey) {
         if (!item.rarity) item.rarity = nft.rarity || null;
       } catch {}
     }));
-    setProgress(65 + Math.round((Math.min(i + batchSize, items.length) / items.length) * 25),
-      `Enriching item details (${Math.min(i + batchSize, items.length)}/${items.length})...`);
+    const done = Math.min(i + batchSize, items.length);
+    setProgress(progressStart + Math.round((done / items.length) * span),
+      `Enriching item details (${done}/${items.length})...`);
     if (i + batchSize < items.length) await sleep(200);
   }
 }
