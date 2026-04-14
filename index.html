@@ -486,6 +486,22 @@
   </div>
 </div>
 
+<!-- Snapshots (appears after first analysis, for the primary collection) -->
+<div class="panel" id="snapshotsPanel" style="display:none; max-width:960px;">
+  <div class="panel-title" style="cursor:pointer; user-select:none; display:flex; align-items:center; gap:6px;" onclick="toggleSnapshotsPanel()">
+    <span>Snapshots</span>
+    <span id="snapshotsToggleIcon" style="font-size:0.7rem;">&#9656;</span>
+    <span id="snapshotsCount" style="font-size:0.7rem; color:var(--text-muted); font-weight:normal;"></span>
+  </div>
+  <div id="snapshotsContent" style="display:none;">
+    <div style="display:flex; gap:8px; margin-bottom:10px; align-items:center; flex-wrap:wrap;">
+      <button class="btn btn-secondary" onclick="saveSnapshot()" style="font-size:0.78rem; padding:5px 12px;">Save current as snapshot</button>
+      <span style="font-size:0.7rem; color:var(--text-muted);">Stores stats + histogram locally. Overlay a past snapshot to compare.</span>
+    </div>
+    <div id="snapshotList"></div>
+  </div>
+</div>
+
 <!-- Results: Card view -->
 <div class="results-grid" id="resultsGrid"></div>
 
@@ -519,6 +535,7 @@ let renderParams = {}; // cached params for re-rendering
 let traitWeights = new Map(); // traitType -> multiplier
 let cachedFetchData = null; // {items, traitCounts, totalSupply, thresholds, points, allTraitTypes, slug, chain, contractAddress}
 let compareResult = null; // set by analyzeCompare — {slug, name, count, topScore, avgScore, lowScore, totalSupply, floorPrice, floorCurrency, scoredItems}
+let viewingPortfolio = false; // true when current scoredItems are cross-collection portfolio results
 
 // Progress-bar phase boundaries for the top-level analyze() flow.
 // Internal fetchers (fetchListingPrices, enrichItems) accept their own
@@ -863,6 +880,7 @@ async function analyze() {
   // A new primary analysis invalidates any prior comparison.
   compareResult = null;
   renderCompareStats();
+  viewingPortfolio = false;
   const apiKey = getApiKey();
   if (!apiKey) { showError('Please enter your OpenSea API key first.'); return; }
 
@@ -1065,7 +1083,10 @@ function finishAnalysis(items, totalSupply, slug, chain, contractAddress, thresh
 
   if (isFinal) setProgress(PROGRESS.done, 'Done!');
   renderResults(items, totalSupply, slug, chain, contractAddress, thresholds, points, minScore, maxScore);
-  if (isFinal) encodeStateToURL();
+  if (isFinal) {
+    encodeStateToURL();
+    refreshSnapshotsPanel();
+  }
 }
 
 // Progressive render: score current raw items with current traitCounts and
@@ -1337,6 +1358,7 @@ async function analyzePortfolio() {
   if (!input) { showError('Enter a wallet address or ENS name.'); return; }
 
   isRunning = true;
+  viewingPortfolio = true;
   const btn = document.getElementById('portfolioBtn');
   btn.disabled = true;
   btn.textContent = 'Scoring...';
@@ -1345,6 +1367,7 @@ async function analyzePortfolio() {
   document.getElementById('resultsGrid').innerHTML = '';
   document.getElementById('resultsTable').innerHTML = '';
   compareResult = null; renderCompareStats();
+  refreshSnapshotsPanel();
 
   try {
     // Resolve to a 0x address (accept username, ENS, or 0x)
@@ -2038,6 +2061,148 @@ function exportCSV() {
   a.download = `rarity_scores_${parseSlug(document.getElementById('collectionInput').value) || 'export'}.csv`;
   a.click();
   URL.revokeObjectURL(url);
+}
+
+// ─── Snapshots (per-collection, localStorage) ───
+const SNAPSHOT_KEY = 'nft_scorer_snapshots';
+const SNAPSHOT_MAX_PER_COLLECTION = 50;
+
+function getSnapshotsAll() {
+  try {
+    const raw = localStorage.getItem(SNAPSHOT_KEY);
+    return raw ? JSON.parse(raw) : {};
+  } catch { return {}; }
+}
+
+function setSnapshotsAll(all) {
+  try { localStorage.setItem(SNAPSHOT_KEY, JSON.stringify(all)); }
+  catch (e) { console.warn('Snapshot save failed:', e.message); }
+}
+
+function toggleSnapshotsPanel() {
+  const content = document.getElementById('snapshotsContent');
+  const icon = document.getElementById('snapshotsToggleIcon');
+  const open = content.style.display === 'none';
+  content.style.display = open ? 'block' : 'none';
+  icon.innerHTML = open ? '&#9662;' : '&#9656;';
+  if (open) renderSnapshotList();
+}
+
+function saveSnapshot() {
+  if (!cachedFetchData || !scoredItems || scoredItems.length === 0) {
+    showError('Analyze a primary collection first.');
+    return;
+  }
+  const slug = cachedFetchData.slug;
+  const scores = scoredItems.map(i => i.totalScore);
+  const listed = scoredItems.filter(i => i.price != null && i.price > 0);
+  let floorPrice = null, floorCurrency = null;
+  if (listed.length > 0) {
+    const f = listed.reduce((a, b) => a.price <= b.price ? a : b);
+    floorPrice = f.price;
+    floorCurrency = f.currency || 'ETH';
+  }
+  const min = Math.min(...scores), max = Math.max(...scores);
+  const BINS = 12;
+  const binWidth = Math.max(1, (max - min) / BINS);
+  const bins = Array(BINS).fill(0);
+  for (const s of scores) {
+    const idx = Math.min(Math.floor((s - min) / binWidth), BINS - 1);
+    bins[idx]++;
+  }
+  const snap = {
+    t: Date.now(),
+    slug,
+    name: (document.getElementById('colName').textContent || slug).trim(),
+    mode: currentMode,
+    count: scoredItems.length,
+    totalSupply: cachedFetchData.totalSupply,
+    topScore: max,
+    avgScore: Math.round(scores.reduce((s, v) => s + v, 0) / scores.length),
+    lowScore: min,
+    floorPrice, floorCurrency,
+    histogram: { min, max, bins }
+  };
+  const all = getSnapshotsAll();
+  if (!all[slug]) all[slug] = [];
+  all[slug].unshift(snap);
+  if (all[slug].length > SNAPSHOT_MAX_PER_COLLECTION) all[slug] = all[slug].slice(0, SNAPSHOT_MAX_PER_COLLECTION);
+  setSnapshotsAll(all);
+  renderSnapshotList();
+  refreshSnapshotsPanel();
+}
+
+function renderSnapshotList() {
+  const slug = cachedFetchData?.slug;
+  const el = document.getElementById('snapshotList');
+  if (!el) return;
+  if (!slug) { el.innerHTML = ''; return; }
+  const all = getSnapshotsAll();
+  const list = all[slug] || [];
+  if (list.length === 0) {
+    el.innerHTML = '<span style="color:var(--text-muted); font-size:0.75rem;">No snapshots yet for this collection.</span>';
+    return;
+  }
+  el.innerHTML = list.map((s, i) => {
+    const date = new Date(s.t).toLocaleString();
+    const floor = s.floorPrice != null ? `${formatPrice(s.floorPrice)} ${escapeHtml(s.floorCurrency)}` : '—';
+    return `<div style="display:flex; align-items:center; gap:8px; padding:6px 0; border-bottom: 1px solid var(--border); font-size:0.75rem;">
+      <span style="color:var(--text-muted); min-width:150px;">${escapeHtml(date)}</span>
+      <span>avg ${s.avgScore}, top ${s.topScore}, floor ${floor}, ${s.count} items (${escapeHtml(s.mode)})</span>
+      <button class="btn btn-secondary" onclick="loadSnapshot(${i})" style="font-size:0.7rem; padding:2px 8px; margin-left:auto;" title="Show this snapshot in the compare stats row">Overlay</button>
+      <button class="btn btn-secondary" onclick="deleteSnapshot(${i})" style="font-size:0.7rem; padding:2px 8px; color:var(--danger);" title="Delete">&times;</button>
+    </div>`;
+  }).join('');
+}
+
+function loadSnapshot(idx) {
+  const slug = cachedFetchData?.slug;
+  if (!slug) return;
+  const all = getSnapshotsAll();
+  const list = all[slug] || [];
+  const s = list[idx];
+  if (!s) return;
+  const date = new Date(s.t).toLocaleString();
+  compareResult = {
+    slug: s.slug,
+    name: `${s.name} @ ${date}`,
+    count: s.count,
+    totalSupply: s.totalSupply,
+    topScore: s.topScore,
+    avgScore: s.avgScore,
+    lowScore: s.lowScore,
+    floorPrice: s.floorPrice,
+    floorCurrency: s.floorCurrency,
+    scoredItems: []
+  };
+  renderCompareStats();
+}
+
+function deleteSnapshot(idx) {
+  const slug = cachedFetchData?.slug;
+  if (!slug) return;
+  const all = getSnapshotsAll();
+  if (!all[slug]) return;
+  all[slug].splice(idx, 1);
+  if (all[slug].length === 0) delete all[slug];
+  setSnapshotsAll(all);
+  renderSnapshotList();
+  refreshSnapshotsPanel();
+}
+
+function refreshSnapshotsPanel() {
+  const slug = cachedFetchData?.slug;
+  const panel = document.getElementById('snapshotsPanel');
+  const countEl = document.getElementById('snapshotsCount');
+  if (!panel) return;
+  if (!slug || viewingPortfolio) {
+    panel.style.display = 'none';
+    return;
+  }
+  panel.style.display = '';
+  const all = getSnapshotsAll();
+  const count = (all[slug] || []).length;
+  countEl.textContent = count === 0 ? '' : `(${count})`;
 }
 
 // ─── Config Export / Import ───
