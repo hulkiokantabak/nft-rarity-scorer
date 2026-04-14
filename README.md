@@ -4,7 +4,7 @@ Score any OpenSea NFT collection by trait rarity. Instantly, in your browser.
 
 ## [>>> OPEN TOOL <<<](https://hulkiokantabak.github.io/nft-rarity-scorer/)
 
-No wallet needed. No download. Just paste a collection slug and score.
+No wallet needed. No download. Bring your own OpenSea API key, paste a collection slug, and score.
 
 ## How to Use
 
@@ -22,7 +22,7 @@ No wallet needed. No download. Just paste a collection slug and score.
 - CSV export
 - Shareable URLs — configuration serialised into query params
 - Dark / Light theme toggle
-- Reads from OpenSea public API — no auth required
+- Uses the OpenSea API — bring your own API key (stored only in your browser's localStorage)
 
 ## Open It
 

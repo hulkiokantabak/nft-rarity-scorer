@@ -5,7 +5,7 @@ Browser tool to score NFT collections by trait rarity using the OpenSea public A
 ## Stack
 - Vanilla JavaScript
 - Single HTML file (`index.html`) — all CSS, JS, and HTML embedded (~1,618 lines)
-- OpenSea public API (`https://api.opensea.io`) — no auth required
+- OpenSea API (`https://api.opensea.io`) — requires a user-supplied API key, stored in browser `localStorage`
 - No framework, no build step
 
 ## How to Run
@@ -15,7 +15,7 @@ Browser tool to score NFT collections by trait rarity using the OpenSea public A
 ## Deployment
 - GitHub repo: https://github.com/hulkiokantabak/nft-rarity-scorer
 - Live site: https://hulkiokantabak.github.io/nft-rarity-scorer/
-- Deploy: push `index.html` to `main` — GitHub Pages serves it directly
+- Deploy: push `index.html` to `master` — GitHub Pages serves it directly
 
 ## Architecture
 Everything is in `index.html`:
@@ -31,5 +31,5 @@ Everything is in `index.html`:
 - Strict Content Security Policy — only OpenSea API calls permitted; no external scripts
 - Default theme: dark. User preference saved to `localStorage`
 - Custom tier URL param (`ct`) is a JSON array — handle parse errors gracefully when reading from URL
-- OpenSea public API, no wallet or API key needed; rate limits apply for heavy scans
+- OpenSea API requires a user-supplied API key (no wallet); rate limits apply for heavy scans
 - GoatCounter analytics at bottom of file
