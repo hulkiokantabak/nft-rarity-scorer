@@ -393,6 +393,19 @@
   </div>
 </div>
 
+<!-- Score a Wallet's Portfolio (optional) -->
+<div class="panel">
+  <div class="panel-title">Score a Wallet's Portfolio (Optional)</div>
+  <div class="form-row" style="align-items: flex-end;">
+    <div class="form-group wide">
+      <label>Wallet Address or ENS</label>
+      <input type="text" id="walletInput" placeholder="0xabc... or name.eth">
+    </div>
+    <button class="btn btn-secondary" id="portfolioBtn" onclick="analyzePortfolio()" style="padding:8px 16px;">Score Portfolio</button>
+  </div>
+  <div style="font-size:0.7rem; color:var(--text-muted); margin-top:6px;">Fetches the wallet's NFTs on Ethereum, groups by collection (top 15 by count), and scores each with your current tier config. Replaces any current results.</div>
+</div>
+
 <!-- Compare with another collection (optional) -->
 <div class="panel">
   <div class="panel-title">Compare With Another Collection (Optional)</div>
@@ -943,6 +956,7 @@ async function analyze() {
     if (!hasTraitCounts) {
       setProgress(PROGRESS.itemsFetchStart, 'Building trait rarity table from all items...');
       const allNfts = await fetchAllItems(slug, apiKey, totalSupply);
+      stampItemContext(allNfts, chain, contractAddress);
       traitCounts = {};
       for (const nft of allNfts) {
         for (const t of nft.traits) traitCounts[`${t.type}::${t.value}`] = (traitCounts[`${t.type}::${t.value}`] || 0) + 1;
@@ -979,9 +993,11 @@ async function analyze() {
     let items = [];
     if (currentMode === 'listed') {
       items = await fetchListedItems(slug, chain, contractAddress, apiKey);
+      stampItemContext(items, chain, contractAddress);
     } else {
       setProgress(PROGRESS.itemsFetchStart, 'Fetching all items...');
       items = await fetchAllItems(slug, apiKey, totalSupply);
+      stampItemContext(items, chain, contractAddress);
       // Progressive render #1: items have traits, no prices/owners/rarity yet.
       renderProgressive(items, traitCounts, totalSupply, slug, chain, contractAddress, thresholds, points);
       // Prices and enrichment are independent — run in parallel to save wall time.
@@ -1078,6 +1094,16 @@ function showCollectionInfo(colData, totalSupply) {
   name.textContent = colData.name || colData.collection || '';
   meta.textContent = `${totalSupply} items · ${currentMode === 'listed' ? 'Listed' : 'All'} mode`;
   el.classList.add('visible');
+}
+
+// Stamp per-item chain/contract so renderers can build OpenSea links
+// without plumbing chain/contract through render calls. No-op if already set
+// (portfolio / compare may have pre-stamped items).
+function stampItemContext(items, chain, contractAddress) {
+  for (const item of items) {
+    if (!item.chain) item.chain = chain;
+    if (!item.contractAddress) item.contractAddress = contractAddress;
+  }
 }
 
 // ─── Fetch Listing Prices ───
@@ -1299,6 +1325,150 @@ function reScoreWithWeights() {
   if (scorePairs && !d.pairCounts) d.pairCounts = buildPairCounts(d.items);
   scoredItems = d.items.map(item => scoreItem(item, d.traitCounts, d.totalSupply, d.thresholds, d.points, d.allTraitTypes, document.getElementById('scoreMissing').checked, d.missingCountByType, scorePairs, scorePairs ? d.pairCounts : null));
   finishAnalysis(scoredItems, d.totalSupply, d.slug, d.chain, d.contractAddress, d.thresholds, d.points);
+}
+
+// ─── Portfolio (score a wallet's holdings across collections) ───
+async function analyzePortfolio() {
+  if (isRunning) return;
+  hideError();
+  const apiKey = getApiKey();
+  if (!apiKey) { showError('Please enter your OpenSea API key first.'); return; }
+  const input = document.getElementById('walletInput').value.trim();
+  if (!input) { showError('Enter a wallet address or ENS name.'); return; }
+
+  isRunning = true;
+  const btn = document.getElementById('portfolioBtn');
+  btn.disabled = true;
+  btn.textContent = 'Scoring...';
+  abortController = new AbortController();
+  showProgress();
+  document.getElementById('resultsGrid').innerHTML = '';
+  document.getElementById('resultsTable').innerHTML = '';
+  compareResult = null; renderCompareStats();
+
+  try {
+    // Resolve to a 0x address (accept username, ENS, or 0x)
+    setProgress(5, 'Resolving wallet...');
+    let addr = input;
+    if (!/^0x[a-fA-F0-9]{40}$/.test(addr)) {
+      const data = await apiGet(`https://api.opensea.io/api/v2/accounts/${encodeURIComponent(input)}`, apiKey);
+      addr = data.address;
+      if (!addr) throw new Error('Could not resolve the wallet to an address.');
+    }
+
+    // Fetch wallet NFTs (Ethereum only for now)
+    setProgress(15, 'Fetching wallet NFTs...');
+    let nfts = [];
+    let next = null;
+    let page = 0;
+    do {
+      const url = next
+        ? `https://api.opensea.io/api/v2/chain/ethereum/account/${encodeURIComponent(addr)}/nfts?limit=200&next=${encodeURIComponent(next)}`
+        : `https://api.opensea.io/api/v2/chain/ethereum/account/${encodeURIComponent(addr)}/nfts?limit=200`;
+      const data = await apiGet(url, apiKey);
+      nfts = nfts.concat(data.nfts || []);
+      next = data.next || null;
+      page++;
+      setProgress(15 + Math.min(page * 4, 20), `Fetched ${nfts.length} NFTs...`);
+      if (nfts.length >= 500) break; // hard cap
+      if (next) await sleep(200);
+    } while (next);
+    if (nfts.length === 0) throw new Error('No NFTs found for this wallet on Ethereum.');
+
+    // Group by collection slug
+    const byCollection = {};
+    for (const nft of nfts) {
+      const slug = nft.collection;
+      if (!slug) continue;
+      if (!byCollection[slug]) byCollection[slug] = [];
+      byCollection[slug].push(nft);
+    }
+    const slugs = Object.keys(byCollection).sort((a, b) => byCollection[b].length - byCollection[a].length);
+    const topSlugs = slugs.slice(0, 15);
+    if (topSlugs.length === 0) throw new Error('NFTs found but none had a collection slug.');
+
+    // Per collection: fetch metadata + trait counts, score the wallet's items
+    const portfolioItems = [];
+    const thresholds = cachedFetchData?.thresholds || [2, 5, 20];
+    const points = cachedFetchData?.points || [7, 3, 1];
+    if (!cachedFetchData) {
+      activeTiers = [
+        { name: 'orange', color: '#ff8c00', threshold: thresholds[0], points: points[0] },
+        { name: 'purple', color: '#9b59b6', threshold: thresholds[1], points: points[1] },
+        { name: 'blue',   color: '#3498db', threshold: thresholds[2], points: points[2] }
+      ];
+    }
+    const scoreMissing = document.getElementById('scoreMissing').checked;
+    const scorePairs = document.getElementById('scorePairs').checked;
+
+    for (let i = 0; i < topSlugs.length; i++) {
+      const slug = topSlugs[i];
+      const pct = 35 + Math.round((i / topSlugs.length) * 60);
+      setProgress(pct, `Scoring ${slug} (${i+1}/${topSlugs.length})...`);
+      try {
+        const colData = await apiGet(`https://api.opensea.io/api/v2/collections/${slug}`, apiKey);
+        const totalSupply = colData.total_supply || 0;
+        const contractAddress = (colData.contracts || [])[0]?.address || '';
+        if (!totalSupply || !contractAddress) continue;
+
+        let traitCounts = {};
+        try {
+          const traitData = await apiGet(`https://api.opensea.io/api/v2/collections/${slug}/traits`, apiKey);
+          for (const [type, values] of Object.entries(traitData)) {
+            if (typeof values === 'object' && values !== null) {
+              for (const [val, count] of Object.entries(values)) {
+                if (typeof count === 'number') traitCounts[`${type}::${val}`] = count;
+              }
+            }
+          }
+        } catch {}
+
+        // Without trait counts we can't score — skip this collection but keep going
+        if (Object.keys(traitCounts).length === 0) continue;
+
+        const items = byCollection[slug].map(nft => ({
+          tokenId: nft.identifier,
+          name: nft.name || `#${nft.identifier}`,
+          image: nft.image_url || null,
+          price: null, currency: null,
+          rarity: nft.rarity,
+          owner: addr,
+          traits: (nft.traits || []).map(t => ({ type: t.trait_type, value: String(t.value) })),
+          chain: 'ethereum',
+          contractAddress,
+          collectionSlug: slug,
+          collectionName: colData.name || slug
+        }));
+
+        const allTraitTypes = buildTraitTypes(traitCounts);
+        const missingCountByType = buildMissingCountByType(traitCounts, totalSupply);
+        const pairCounts = scorePairs ? buildPairCounts(items) : null;
+        const scored = items.map(item => scoreItem(item, traitCounts, totalSupply, thresholds, points, allTraitTypes, scoreMissing, missingCountByType, scorePairs, pairCounts));
+        portfolioItems.push(...scored);
+      } catch (e) {
+        console.warn(`Failed to score ${slug}:`, e.message);
+      }
+    }
+
+    if (portfolioItems.length === 0) throw new Error('Could not score any items. Collections may lack trait data.');
+
+    // Use finishAnalysis to compute valueScore/isBargain + render.
+    // For portfolio we keep the primary cachedFetchData intact so re-scoring with weights still works for the primary.
+    setProgress(PROGRESS.scoring, 'Scoring complete, rendering...');
+    finishAnalysis(portfolioItems, portfolioItems.length, `portfolio:${addr.slice(0,6)}...`, 'ethereum', '', thresholds, points, true);
+
+    // Update stats label + hide floor (mixed currencies would mislead)
+    document.getElementById('statCountLabel').textContent = 'Portfolio Items';
+    document.getElementById('statSupply').textContent = topSlugs.length + ' collections';
+  } catch (e) {
+    if (e.name === 'AbortError') showError('Portfolio scoring cancelled.');
+    else showError(e.message);
+  } finally {
+    isRunning = false;
+    btn.disabled = false;
+    btn.textContent = 'Score Portfolio';
+    setTimeout(hideProgress, 1000);
+  }
 }
 
 // ─── Compare Collection ───
@@ -1538,6 +1708,9 @@ function scoreItem(item, traitCounts, totalSupply, thresholds, points, allTraitT
   return {
     tokenId: item.tokenId, name: item.name, image: item.image, price: item.price, currency: item.currency || 'ETH',
     rarityRank: item.rarity?.rank, totalSupply, totalScore, owner: item.owner, ownerName: item.ownerName || null,
+    // Optional per-item fields used by cross-collection views (e.g. Portfolio); single-collection fetches leave them undefined.
+    chain: item.chain, contractAddress: item.contractAddress,
+    collectionSlug: item.collectionSlug, collectionName: item.collectionName,
     tierCounts,
     mainTraits: traitScores.filter(t => !t.type.startsWith('_')),
     specialTraits: traitScores.filter(t => t.type.startsWith('_') && t.points > 0),
@@ -1635,17 +1808,22 @@ function updateShowMore() {
 
 function renderCards(items, totalSupply, chain, contractAddress, minScore, maxScore) {
   const grid = document.getElementById('resultsGrid');
-  grid.innerHTML = items.map((item, idx) => `
+  grid.innerHTML = items.map((item, idx) => {
+    const itemChain = item.chain || chain;
+    const itemContract = item.contractAddress || contractAddress;
+    const itemSupply = item.totalSupply || totalSupply;
+    return `
     <div class="item-card${item.isBargain ? ' bargain' : ''}">
       <div class="item-header">
         <div class="item-header-left">
           ${item.image && item.image.startsWith('https://') ? `<img class="item-thumb" src="${escapeHtml(item.image)}" alt="" loading="lazy">` : ''}
           <div>
           <div class="item-name"><span class="item-idx">#${idx + 1}</span> ${escapeHtml(item.name)}</div>
+          ${item.collectionName ? `<div style="font-size:0.72rem; color:var(--text-muted);">from <a href="https://opensea.io/collection/${encodeURIComponent(item.collectionSlug)}" target="_blank" rel="noopener" style="color:var(--accent);">${escapeHtml(item.collectionName)}</a></div>` : ''}
           <div class="item-badges">
             ${item.isBargain ? '<span class="badge badge-bargain">Good Value</span>' : ''}
           </div>
-          <div class="item-rank">OS Rarity: ${item.rarityRank || 'N/A'} / ${totalSupply}</div>
+          <div class="item-rank">OS Rarity: ${item.rarityRank || 'N/A'} / ${itemSupply}</div>
           <div class="item-price">${item.price != null ? `<span class="eth">${formatPrice(item.price)} ${escapeHtml(item.currency)}</span>` : '<span style="color:var(--text-muted)">Not listed</span>'}</div>
           ${item.owner ? `<div class="item-owner">Owner: ${ownerLinkHtml(item)}</div>` : ''}
           ${item.valueScore != null ? `<div class="value-ratio">Value: ${item.valueScore} pts/ETH</div>` : ''}
@@ -1666,7 +1844,7 @@ function renderCards(items, totalSupply, chain, contractAddress, minScore, maxSc
             <div class="trait-tag" style="${traitTagStyle(t.tier)}">
               <span class="trait-type">${escapeHtml(t.type)}</span>
               <span class="trait-value">${escapeHtml(t.value)}</span>
-              <span class="trait-pct">${t.pct}% (${t.count}/${totalSupply})${t.points > 0 ? ' +' + t.points : ''}</span>
+              <span class="trait-pct">${t.pct}% (${t.count}/${itemSupply})${t.points > 0 ? ' +' + t.points : ''}</span>
             </div>`).join('')}
         </div>
       </div>
@@ -1694,9 +1872,10 @@ function renderCards(items, totalSupply, chain, contractAddress, minScore, maxSc
             </div>`).join('')}
         </div>
       </div>` : ''}
-      <a class="opensea-link" href="${openSeaItemUrl(chain, contractAddress, item.tokenId)}" target="_blank" rel="noopener">View on OpenSea &#8599;</a>
+      <a class="opensea-link" href="${openSeaItemUrl(itemChain, itemContract, item.tokenId)}" target="_blank" rel="noopener">View on OpenSea &#8599;</a>
     </div>
-  `).join('');
+  `;
+  }).join('');
 }
 
 function renderTable(items, totalSupply, chain, contractAddress, minScore, maxScore) {
@@ -1715,20 +1894,23 @@ function renderTable(items, totalSupply, chain, contractAddress, minScore, maxSc
       <th></th>
     </tr></thead>
     <tbody>
-    ${items.map((item, idx) => `
+    ${items.map((item, idx) => {
+      const itemChain = item.chain || chain;
+      const itemContract = item.contractAddress || contractAddress;
+      return `
       <tr class="expandable${item.isBargain ? ' bargain-row' : ''}" onclick="toggleTableRow(this)">
         <td><span class="tbl-idx">${idx + 1}</span></td>
         <td>${item.image && item.image.startsWith('https://') ? `<img class="tbl-thumb" src="${escapeHtml(item.image)}" alt="" loading="lazy">` : ''}</td>
         <td class="score-cell" style="color:${item.scoreColor}">${item.totalScore}</td>
         <td>${item.valueScore != null ? item.valueScore : '—'}</td>
         <td class="price-cell">${item.price != null ? formatPrice(item.price) + ' ' + escapeHtml(item.currency) : '—'}</td>
-        <td>${escapeHtml(item.name)}${item.isBargain ? ' <span class="badge badge-bargain">Value</span>' : ''}</td>
+        <td>${escapeHtml(item.name)}${item.collectionName ? ` <span style="color:var(--text-muted); font-size:0.72rem;">· ${escapeHtml(item.collectionName)}</span>` : ''}${item.isBargain ? ' <span class="badge badge-bargain">Value</span>' : ''}</td>
         <td>${ownerLinkHtml(item, ' onclick="event.stopPropagation()"')}</td>
         <td>${item.rarityRank || 'N/A'}</td>
         <td><div class="tier-dots">
           ${activeTiers.map(t => `<span style="color:${t.color}">${item.tierCounts[t.name] || 0}</span>`).join('/')}
         </div></td>
-        <td><a href="${openSeaItemUrl(chain, contractAddress, item.tokenId)}" target="_blank" rel="noopener" onclick="event.stopPropagation()">&#8599;</a></td>
+        <td><a href="${openSeaItemUrl(itemChain, itemContract, item.tokenId)}" target="_blank" rel="noopener" onclick="event.stopPropagation()">&#8599;</a></td>
       </tr>
       <tr class="expand-row" id="expand-${escapeHtml(item.tokenId)}">
         <td colspan="10" class="expand-cell">
@@ -1742,7 +1924,8 @@ function renderTable(items, totalSupply, chain, contractAddress, minScore, maxSc
           </div>
         </td>
       </tr>
-    `).join('')}
+    `;
+    }).join('')}
     </tbody></table>`;
 }
 
