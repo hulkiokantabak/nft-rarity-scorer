@@ -895,9 +895,10 @@ async function analyze() {
         setProgress(95, 'Scoring items...');
         const allTraitTypes = buildTraitTypes(traitCounts);
         const scoreMissing = document.getElementById('scoreMissing').checked;
-        cachedFetchData = { items: allNfts, traitCounts, totalSupply, thresholds, points, allTraitTypes, slug, chain, contractAddress };
+        const missingCountByType = buildMissingCountByType(traitCounts, totalSupply);
+        cachedFetchData = { items: allNfts, traitCounts, totalSupply, thresholds, points, allTraitTypes, missingCountByType, slug, chain, contractAddress };
         populateWeightsPanel(allTraitTypes);
-        scoredItems = allNfts.map(item => scoreItem(item, traitCounts, totalSupply, thresholds, points, allTraitTypes, scoreMissing));
+        scoredItems = allNfts.map(item => scoreItem(item, traitCounts, totalSupply, thresholds, points, allTraitTypes, scoreMissing, missingCountByType));
         finishAnalysis(scoredItems, totalSupply, slug, chain, contractAddress, thresholds, points);
         return;
       }
@@ -920,9 +921,10 @@ async function analyze() {
     setProgress(95, 'Scoring items...');
     const allTraitTypes = buildTraitTypes(traitCounts);
     const scoreMissing = document.getElementById('scoreMissing').checked;
-    cachedFetchData = { items, traitCounts, totalSupply, thresholds, points, allTraitTypes, slug, chain, contractAddress };
+    const missingCountByType = buildMissingCountByType(traitCounts, totalSupply);
+    cachedFetchData = { items, traitCounts, totalSupply, thresholds, points, allTraitTypes, missingCountByType, slug, chain, contractAddress };
     populateWeightsPanel(allTraitTypes);
-    scoredItems = items.map(item => scoreItem(item, traitCounts, totalSupply, thresholds, points, allTraitTypes, scoreMissing));
+    scoredItems = items.map(item => scoreItem(item, traitCounts, totalSupply, thresholds, points, allTraitTypes, scoreMissing, missingCountByType));
     finishAnalysis(scoredItems, totalSupply, slug, chain, contractAddress, thresholds, points);
 
   } catch (e) {
@@ -1162,7 +1164,7 @@ function reScoreWithWeights() {
     traitWeights.set(input.dataset.type, parseFloat(input.value) || 1.0);
   });
   const d = cachedFetchData;
-  scoredItems = d.items.map(item => scoreItem(item, d.traitCounts, d.totalSupply, d.thresholds, d.points, d.allTraitTypes, document.getElementById('scoreMissing').checked));
+  scoredItems = d.items.map(item => scoreItem(item, d.traitCounts, d.totalSupply, d.thresholds, d.points, d.allTraitTypes, document.getElementById('scoreMissing').checked, d.missingCountByType));
   finishAnalysis(scoredItems, d.totalSupply, d.slug, d.chain, d.contractAddress, d.thresholds, d.points);
 }
 
@@ -1176,6 +1178,21 @@ function buildTraitTypes(traitCounts) {
   return types;
 }
 
+// Pre-aggregate missing count per trait type so scoreItem's missing-trait path
+// is O(1) per type instead of rescanning all trait counts per item.
+function buildMissingCountByType(traitCounts, totalSupply) {
+  const present = {};
+  for (const [key, count] of Object.entries(traitCounts)) {
+    const type = key.split('::')[0];
+    present[type] = (present[type] || 0) + count;
+  }
+  const missing = {};
+  for (const type of Object.keys(present)) {
+    missing[type] = Math.max(0, totalSupply - present[type]);
+  }
+  return missing;
+}
+
 function classifyTrait(pct, thresholds, points) {
   for (let i = 0; i < thresholds.length; i++) {
     if (pct < thresholds[i]) return { tier: activeTiers[i]?.name || ('tier' + i), pts: points[i] };
@@ -1183,7 +1200,7 @@ function classifyTrait(pct, thresholds, points) {
   return { tier: 'common', pts: 0 };
 }
 
-function scoreItem(item, traitCounts, totalSupply, thresholds, points, allTraitTypes, scoreMissing) {
+function scoreItem(item, traitCounts, totalSupply, thresholds, points, allTraitTypes, scoreMissing, missingCountByType) {
   let totalScore = 0;
   const traitScores = [];
   for (const trait of item.traits) {
@@ -1202,11 +1219,7 @@ function scoreItem(item, traitCounts, totalSupply, thresholds, points, allTraitT
     const itemTypes = new Set(item.traits.filter(t => !t.type.startsWith('_')).map(t => t.type));
     for (const type of allTraitTypes) {
       if (!itemTypes.has(type)) {
-        let presentCount = 0;
-        for (const [key, count] of Object.entries(traitCounts)) {
-          if (key.startsWith(type + '::')) presentCount += count;
-        }
-        const missingCount = totalSupply - presentCount;
+        const missingCount = missingCountByType ? (missingCountByType[type] || 0) : 0;
         const pct = totalSupply > 0 ? (missingCount / totalSupply) * 100 : 0;
         let { tier, pts } = classifyTrait(pct, thresholds, points);
         const weight = traitWeights.get(type) || 1.0;
