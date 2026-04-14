@@ -423,7 +423,6 @@
       <input type="checkbox" id="scorePairs"> Score trait combinations
     </label>
     <button class="btn btn-analyze" id="analyzeBtn" onclick="analyze()">Analyze Collection</button>
-    <button class="btn btn-cancel" id="cancelBtn" onclick="cancelAnalysis()" style="display: none;">Cancel</button>
   </div>
   <div style="margin-top: 8px; display: flex; gap: 8px; justify-content: center; align-items: center; flex-wrap: wrap;">
     <span style="color:var(--text-muted); font-size:0.72rem;">Full config (collection, tiers, weights, options):</span>
@@ -495,6 +494,9 @@
 <div class="progress-container" id="progress">
   <div class="progress-bar-bg"><div class="progress-bar-fill" id="progressFill"></div></div>
   <div class="progress-text" id="progressText">Preparing...</div>
+  <div style="text-align:center; margin-top:8px;">
+    <button class="btn btn-cancel" id="cancelBtn" onclick="cancelAnalysis()" style="padding: 4px 16px; font-size: 0.78rem;">Cancel</button>
+  </div>
 </div>
 
 <!-- Error -->
@@ -646,8 +648,12 @@ function addCustomTier(name, threshold, pts, color) {
   if (count >= 10) return;
   const row = document.createElement('div');
   row.className = 'custom-tier-row';
+  // Sanitize color to a strict 6-char hex; any other shape (CSS expressions, attribute-breaking
+  // payloads, etc.) is replaced with the default. Defends against URL/config import injecting
+  // arbitrary CSS into the rendered tier styling.
+  const safeColor = safeHexColor(color);
   row.innerHTML = `
-    <input type="color" class="ct-color" value="${color || '#3498db'}" title="Tier color">
+    <input type="color" class="ct-color" value="${safeColor}" title="Tier color">
     <input type="text" class="ct-name" value="${escapeHtml(name || 'Tier ' + (count + 1))}" placeholder="Tier name" maxlength="20">
     <span class="ct-sep">&lt;</span>
     <input type="number" class="ct-thresh" value="${threshold ?? 10}" min="0" max="100" step="0.5" title="Max rarity %">
@@ -891,7 +897,8 @@ function parsePrice(listing) {
     const str = String(val).padStart(decimals + 1, '0');
     const intPart = str.slice(0, -decimals) || '0';
     const fracPart = str.slice(-decimals).replace(/0+$/, '');
-    return parseFloat(intPart + (fracPart ? '.' + fracPart : ''));
+    const result = parseFloat(intPart + (fracPart ? '.' + fracPart : ''));
+    return isNaN(result) ? 0 : result;
   } catch (e) { return 0; }
 }
 function formatPrice(price) {
@@ -913,14 +920,23 @@ function ownerLinkHtml(item, extraAttrs = '') {
   return `<a href="${href}" target="_blank" rel="noopener"${extraAttrs}>${label}</a>`;
 }
 
+// 6-char hex colors only — defense against CSS injection via tier color fields
+// loaded from URL params or imported config files.
+function isValidHexColor(c) {
+  return typeof c === 'string' && /^#[0-9a-fA-F]{6}$/.test(c);
+}
+function safeHexColor(c, fallback = '#3498db') {
+  return isValidHexColor(c) ? c : fallback;
+}
+
 function traitTagStyle(tierName) {
   // Standard tiers use CSS classes; for unified approach use inline styles from activeTiers
   const tier = activeTiers.find(t => t.name === tierName);
-  if (tier) {
+  if (tier && isValidHexColor(tier.color)) {
     const c = tier.color;
     return `background:${c}18; color:${c}; border-color:${c}55;`;
   }
-  // common / unmatched
+  // common / unmatched / invalid color
   return 'background:rgba(149,165,166,0.06); color:#95a5a6; border-color:rgba(149,165,166,0.15);';
 }
 
@@ -933,12 +949,11 @@ function scoreColor(score, min, max) {
 }
 
 function cancelAnalysis() {
+  // Just abort the in-flight fetch. State cleanup happens in the running flow's
+  // finally block when AbortError propagates — doing both here was a race: the
+  // user could click Cancel then immediately Analyze and the OLD finally would
+  // overwrite the NEW run's isRunning/button state.
   if (abortController) abortController.abort();
-  isRunning = false;
-  document.getElementById('analyzeBtn').disabled = false;
-  document.getElementById('analyzeBtn').textContent = 'Analyze Collection';
-  document.getElementById('cancelBtn').style.display = 'none';
-  hideProgress();
 }
 
 // ─── Main Analysis ───
@@ -993,7 +1008,6 @@ async function analyze() {
   const btn = document.getElementById('analyzeBtn');
   btn.disabled = true;
   btn.textContent = 'Analyzing...';
-  document.getElementById('cancelBtn').style.display = 'inline-block';
   abortController = new AbortController();
   showProgress();
   document.getElementById('resultsGrid').innerHTML = '';
@@ -1118,7 +1132,6 @@ async function analyze() {
     isRunning = false;
     btn.disabled = false;
     btn.textContent = 'Analyze Collection';
-    document.getElementById('cancelBtn').style.display = 'none';
     setTimeout(hideProgress, 1000);
   }
 }
@@ -1293,6 +1306,7 @@ async function fetchAllItems(slug, apiKey, totalSupply) {
 let ownerNameCache = new Map(); // address -> {name, ts}
 const OWNER_CACHE_KEY = 'nft_scorer_owner_cache';
 const OWNER_CACHE_TTL_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
+const OWNER_CACHE_MAX_ENTRIES = 5000; // bound localStorage growth; defends against bloat from large portfolios or hostile API responses
 
 function loadOwnerCache() {
   try {
@@ -1311,6 +1325,15 @@ function loadOwnerCache() {
 
 function saveOwnerCache() {
   try {
+    // FIFO eviction by timestamp once we exceed the cap, so a Portfolio scan over many
+    // wallets or a hostile API can't bloat localStorage indefinitely.
+    if (ownerNameCache.size > OWNER_CACHE_MAX_ENTRIES) {
+      const entries = [...ownerNameCache.entries()]
+        .filter(([, e]) => e && typeof e === 'object' && typeof e.ts === 'number')
+        .sort((a, b) => a[1].ts - b[1].ts); // oldest first
+      const toEvict = entries.slice(0, ownerNameCache.size - OWNER_CACHE_MAX_ENTRIES);
+      for (const [addr] of toEvict) ownerNameCache.delete(addr);
+    }
     const obj = {};
     for (const [addr, entry] of ownerNameCache.entries()) {
       if (entry && typeof entry === 'object') obj[addr] = { name: entry.name, ts: entry.ts };
@@ -1750,11 +1773,13 @@ function renderCompareTabResults(A, B) {
 }
 
 function renderMiniHistogram(h) {
-  if (!h || h.min === h.max) return '';
+  if (!h || !Array.isArray(h.bins) || h.bins.length === 0) return '';
+  if (typeof h.min !== 'number' || typeof h.max !== 'number' || h.min === h.max) return '';
   const W = 380, H = 40, gap = 2;
   const BINS = h.bins.length;
   const barW = (W - gap * (BINS - 1)) / BINS;
   const maxCount = Math.max(...h.bins);
+  if (maxCount <= 0) return '';
   const binWidth = (h.max - h.min) / BINS;
   const rects = h.bins.map((count, i) => {
     const hh = maxCount > 0 ? (count / maxCount) * H : 0;
