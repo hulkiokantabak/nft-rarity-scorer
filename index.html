@@ -1585,6 +1585,18 @@ function getCurrentTierConfig() {
   return { thresholds, points };
 }
 
+async function verifyCompareSlug(slug, apiKey) {
+  // Returns the colData when the slug resolves to a usable collection. Throws on any problem —
+  // the caller distinguishes which slug failed by catching per-promise.
+  const colData = await apiGet(`https://api.opensea.io/api/v2/collections/${slug}`, apiKey);
+  const totalSupply = colData.total_supply || 0;
+  const contracts = colData.contracts || [];
+  const contractAddress = contracts[0]?.address || '';
+  if (!totalSupply) throw new Error('missing total supply');
+  if (!contractAddress) throw new Error('missing contract address');
+  return colData;
+}
+
 async function analyzeCompareTab() {
   if (isRunning) return;
   hideError();
@@ -1600,14 +1612,28 @@ async function analyzeCompareTab() {
   isRunning = true;
   const btn = document.getElementById('compareBtn');
   btn.disabled = true;
-  btn.textContent = 'Comparing...';
+  btn.textContent = 'Verifying...';
   abortController = new AbortController();
   showProgress();
   document.getElementById('compareResultsArea').style.display = 'none';
 
   try {
-    const A = await runCompareAnalysis(slugA, apiKey, tierConfig, 0, 48);
-    const B = await runCompareAnalysis(slugB, apiKey, tierConfig, 50, 98);
+    // Pre-flight: confirm BOTH slugs resolve before starting the heavy fetch. If either fails,
+    // report specifically which one and abort without any partial rendering or wasted listing fetches.
+    setProgress(3, 'Verifying both collections...');
+    const verdicts = await Promise.allSettled([
+      verifyCompareSlug(slugA, apiKey),
+      verifyCompareSlug(slugB, apiKey)
+    ]);
+    const failures = [];
+    if (verdicts[0].status === 'rejected') failures.push(`"${slugA}" — ${verdicts[0].reason.message || 'not found'}`);
+    if (verdicts[1].status === 'rejected') failures.push(`"${slugB}" — ${verdicts[1].reason.message || 'not found'}`);
+    if (failures.length > 0) throw new Error('Could not verify collection' + (failures.length > 1 ? 's' : '') + ': ' + failures.join('; '));
+    const colA = verdicts[0].value, colB = verdicts[1].value;
+
+    btn.textContent = 'Comparing...';
+    const A = await runCompareAnalysis(slugA, apiKey, tierConfig, 5, 48, colA);
+    const B = await runCompareAnalysis(slugB, apiKey, tierConfig, 50, 98, colB);
     renderCompareTabResults(A, B);
     setProgress(PROGRESS.done, 'Compare complete!');
   } catch (e) {
@@ -1621,10 +1647,13 @@ async function analyzeCompareTab() {
   }
 }
 
-async function runCompareAnalysis(slug, apiKey, tierConfig, pStart, pEnd) {
+async function runCompareAnalysis(slug, apiKey, tierConfig, pStart, pEnd, prefetchedColData) {
   const span = pEnd - pStart;
-  setProgress(pStart, `[${slug}] fetching collection info...`);
-  const colData = await apiGet(`https://api.opensea.io/api/v2/collections/${slug}`, apiKey);
+  let colData = prefetchedColData;
+  if (!colData) {
+    setProgress(pStart, `[${slug}] fetching collection info...`);
+    colData = await apiGet(`https://api.opensea.io/api/v2/collections/${slug}`, apiKey);
+  }
   const totalSupply = colData.total_supply || 0;
   const contracts = colData.contracts || [];
   const chain = contracts[0]?.chain || 'ethereum';
