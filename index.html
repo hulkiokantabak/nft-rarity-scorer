@@ -582,9 +582,7 @@ let currentView = 'cards';
 let scoredItems = [];
 let abortController = null;
 let isRunning = false;
-let lastColData = null;
-let lastChain = '';
-let lastContract = '';
+let hideProgressTimer = null; // tracks the pending progress-hide so a new run can cancel it
 let currentTierMode = 'standard'; // 'standard' or 'custom'
 let activeTiers = []; // unified tier array used during rendering: [{name, color, threshold, points}, ...]
 let displayCount = 50;
@@ -865,8 +863,24 @@ function setProgress(pct, text) {
     document.getElementById('progressText').textContent = text;
   }
 }
-function showProgress() { document.getElementById('progress').classList.add('visible'); progressStartTime = Date.now(); }
-function hideProgress() { document.getElementById('progress').classList.remove('visible'); }
+function showProgress() {
+  // If a new run starts before the previous run's delayed hide fires, cancel that pending hide
+  // so the bar stays visible for the new run.
+  if (hideProgressTimer) { clearTimeout(hideProgressTimer); hideProgressTimer = null; }
+  document.getElementById('progress').classList.add('visible');
+  progressStartTime = Date.now();
+}
+function hideProgress() {
+  if (hideProgressTimer) { clearTimeout(hideProgressTimer); hideProgressTimer = null; }
+  document.getElementById('progress').classList.remove('visible');
+}
+function scheduleHideProgress(delayMs = 1000) {
+  if (hideProgressTimer) clearTimeout(hideProgressTimer);
+  hideProgressTimer = setTimeout(() => {
+    hideProgressTimer = null;
+    document.getElementById('progress').classList.remove('visible');
+  }, delayMs);
+}
 
 async function apiGet(url, apiKey, retries = 3) {
   for (let attempt = 0; attempt <= retries; attempt++) {
@@ -1019,13 +1033,10 @@ async function analyze() {
     // Step 1: Collection info
     setProgress(PROGRESS.collectionMeta, 'Fetching collection info...');
     const colData = await apiGet(`https://api.opensea.io/api/v2/collections/${slug}`, apiKey);
-    lastColData = colData;
     const totalSupply = colData.total_supply || 0;
     const contracts = colData.contracts || [];
     const chain = contracts[0]?.chain || 'ethereum';
     const contractAddress = contracts[0]?.address || '';
-    lastChain = chain;
-    lastContract = contractAddress;
 
     if (!totalSupply) throw new Error('Could not determine collection total supply.');
     if (!contractAddress) throw new Error('Could not determine contract address.');
@@ -1132,7 +1143,7 @@ async function analyze() {
     isRunning = false;
     btn.disabled = false;
     btn.textContent = 'Analyze Collection';
-    setTimeout(hideProgress, 1000);
+    scheduleHideProgress();
   }
 }
 
@@ -1459,6 +1470,9 @@ async function analyzePortfolio() {
   document.getElementById('resultsTable').innerHTML = '';
   compareResult = null; renderCompareStats();
   refreshSnapshotsPanel();
+  // Weights panel re-score targets the primary collection (cachedFetchData). Hide it in portfolio
+  // view so users don't accidentally clobber the cross-collection results with a primary re-score.
+  document.getElementById('weightsPanel').style.display = 'none';
 
   try {
     // Resolve to a 0x address (accept username, ENS, or 0x)
@@ -1581,7 +1595,7 @@ async function analyzePortfolio() {
     isRunning = false;
     btn.disabled = false;
     btn.textContent = 'Score Portfolio';
-    setTimeout(hideProgress, 1000);
+    scheduleHideProgress();
   }
 }
 
@@ -1666,7 +1680,7 @@ async function analyzeCompareTab() {
     isRunning = false;
     btn.disabled = false;
     btn.textContent = 'Compare';
-    setTimeout(hideProgress, 1000);
+    scheduleHideProgress();
   }
 }
 
@@ -2266,7 +2280,7 @@ function exportCSV() {
     item.valueScore ?? '', item.price != null ? formatPrice(item.price) : '',
     csvSafe(item.currency), csvSafe(item.ownerName || item.owner || ''), item.rarityRank || '',
     ...activeTiers.map(t => item.tierCounts[t.name] || 0),
-    item.isBargain ? 'Yes' : '', csvSafe(openSeaItemUrl(lastChain, lastContract, item.tokenId))
+    item.isBargain ? 'Yes' : '', csvSafe(openSeaItemUrl(item.chain || '', item.contractAddress || '', item.tokenId))
   ]);
   const csv = [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
   const blob = new Blob([csv], { type: 'text/csv' });
@@ -2387,8 +2401,7 @@ function loadSnapshot(idx) {
     avgScore: s.avgScore,
     lowScore: s.lowScore,
     floorPrice: s.floorPrice,
-    floorCurrency: s.floorCurrency,
-    scoredItems: []
+    floorCurrency: s.floorCurrency
   };
   renderCompareStats();
 }
