@@ -1077,7 +1077,37 @@ async function fetchAllItems(slug, apiKey, totalSupply) {
 }
 
 // ─── Owner Name Resolution ───
-let ownerNameCache = new Map(); // address -> displayName
+let ownerNameCache = new Map(); // address -> {name, ts}
+const OWNER_CACHE_KEY = 'nft_scorer_owner_cache';
+const OWNER_CACHE_TTL_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
+
+function loadOwnerCache() {
+  try {
+    const raw = localStorage.getItem(OWNER_CACHE_KEY);
+    if (!raw) return;
+    const stored = JSON.parse(raw);
+    if (!stored || typeof stored !== 'object') return;
+    const now = Date.now();
+    for (const [addr, entry] of Object.entries(stored)) {
+      if (entry && typeof entry === 'object' && typeof entry.ts === 'number' && now - entry.ts < OWNER_CACHE_TTL_MS) {
+        ownerNameCache.set(addr, { name: entry.name || null, ts: entry.ts });
+      }
+    }
+  } catch {}
+}
+
+function saveOwnerCache() {
+  try {
+    const obj = {};
+    for (const [addr, entry] of ownerNameCache.entries()) {
+      if (entry && typeof entry === 'object') obj[addr] = { name: entry.name, ts: entry.ts };
+    }
+    localStorage.setItem(OWNER_CACHE_KEY, JSON.stringify(obj));
+  } catch (e) {
+    // Quota or serialization errors — silently degrade to session-only cache
+    console.warn('Owner cache write failed:', e.message);
+  }
+}
 
 async function resolveOwnerNames(items, apiKey) {
   const unique = [...new Set(items.map(i => i.owner).filter(Boolean))];
@@ -1093,9 +1123,9 @@ async function resolveOwnerNames(items, apiKey) {
       try {
         const data = await apiGet(`https://api.opensea.io/api/v2/accounts/${encodeURIComponent(addr)}`, apiKey);
         const name = data.username || data.ens_name || null;
-        ownerNameCache.set(addr, name);
+        ownerNameCache.set(addr, { name, ts: Date.now() });
       } catch {
-        ownerNameCache.set(addr, null);
+        ownerNameCache.set(addr, { name: null, ts: Date.now() });
       }
     }));
     setProgress(90 + Math.round((Math.min(i + batchSize, toResolve.length) / toResolve.length) * 5),
@@ -1103,13 +1133,14 @@ async function resolveOwnerNames(items, apiKey) {
     if (i + batchSize < toResolve.length) await sleep(200);
   }
   applyOwnerNames(items);
+  saveOwnerCache();
 }
 
 function applyOwnerNames(items) {
   for (const item of items) {
     if (item.owner && ownerNameCache.has(item.owner)) {
-      const name = ownerNameCache.get(item.owner);
-      if (name) item.ownerName = name;
+      const entry = ownerNameCache.get(item.owner);
+      if (entry && entry.name) item.ownerName = entry.name;
     }
   }
 }
@@ -1624,6 +1655,7 @@ loadTheme();
 loadThumbs();
 loadApiKey();
 loadLastCollection();
+loadOwnerCache();
 loadStateFromURL();
 </script>
 
