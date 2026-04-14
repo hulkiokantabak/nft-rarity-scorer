@@ -776,6 +776,19 @@ function formatPrice(price) {
   return parseFloat(price.toPrecision(4));
 }
 
+// Shared link builders used by cards, table, and CSV export.
+function openSeaItemUrl(chain, contractAddress, tokenId) {
+  return `https://opensea.io/assets/${encodeURIComponent(chain)}/${encodeURIComponent(contractAddress)}/${encodeURIComponent(tokenId)}`;
+}
+function ownerLinkHtml(item, extraAttrs = '') {
+  if (!item.owner) return '—';
+  const href = 'https://opensea.io/' + encodeURIComponent(item.ownerName || item.owner);
+  const label = item.ownerName
+    ? escapeHtml(item.ownerName)
+    : escapeHtml(item.owner.slice(0,6)) + '...' + escapeHtml(item.owner.slice(-4));
+  return `<a href="${href}" target="_blank" rel="noopener"${extraAttrs}>${label}</a>`;
+}
+
 function traitTagStyle(tierName) {
   // Standard tiers use CSS classes; for unified approach use inline styles from activeTiers
   const tier = activeTiers.find(t => t.name === tierName);
@@ -1427,7 +1440,7 @@ function renderCards(items, totalSupply, chain, contractAddress, minScore, maxSc
           </div>
           <div class="item-rank">OS Rarity: ${item.rarityRank || 'N/A'} / ${totalSupply}</div>
           <div class="item-price">${item.price != null ? `<span class="eth">${formatPrice(item.price)} ${escapeHtml(item.currency)}</span>` : '<span style="color:var(--text-muted)">Not listed</span>'}</div>
-          ${item.owner ? `<div class="item-owner">Owner: <a href="https://opensea.io/${encodeURIComponent(item.ownerName || item.owner)}" target="_blank" rel="noopener">${item.ownerName ? escapeHtml(item.ownerName) : item.owner.slice(0,6) + '...' + item.owner.slice(-4)}</a></div>` : ''}
+          ${item.owner ? `<div class="item-owner">Owner: ${ownerLinkHtml(item)}</div>` : ''}
           ${item.valueScore != null ? `<div class="value-ratio">Value: ${item.valueScore} pts/ETH</div>` : ''}
           </div>
         </div>
@@ -1462,7 +1475,7 @@ function renderCards(items, totalSupply, chain, contractAddress, minScore, maxSc
             </div>`).join('')}
         </div>
       </div>` : ''}
-      <a class="opensea-link" href="https://opensea.io/assets/${encodeURIComponent(chain)}/${encodeURIComponent(contractAddress)}/${encodeURIComponent(item.tokenId)}" target="_blank" rel="noopener">View on OpenSea &#8599;</a>
+      <a class="opensea-link" href="${openSeaItemUrl(chain, contractAddress, item.tokenId)}" target="_blank" rel="noopener">View on OpenSea &#8599;</a>
     </div>
   `).join('');
 }
@@ -1491,12 +1504,12 @@ function renderTable(items, totalSupply, chain, contractAddress, minScore, maxSc
         <td>${item.valueScore != null ? item.valueScore : '—'}</td>
         <td class="price-cell">${item.price != null ? formatPrice(item.price) + ' ' + escapeHtml(item.currency) : '—'}</td>
         <td>${escapeHtml(item.name)}${item.isBargain ? ' <span class="badge badge-bargain">Value</span>' : ''}</td>
-        <td>${item.owner ? `<a href="https://opensea.io/${encodeURIComponent(item.ownerName || item.owner)}" target="_blank" rel="noopener" onclick="event.stopPropagation()">${item.ownerName ? escapeHtml(item.ownerName) : escapeHtml(item.owner.slice(0,6)) + '...' + escapeHtml(item.owner.slice(-4))}</a>` : '—'}</td>
+        <td>${ownerLinkHtml(item, ' onclick="event.stopPropagation()"')}</td>
         <td>${item.rarityRank || 'N/A'}</td>
         <td><div class="tier-dots">
           ${activeTiers.map(t => `<span style="color:${t.color}">${item.tierCounts[t.name] || 0}</span>`).join('/')}
         </div></td>
-        <td><a href="https://opensea.io/assets/${encodeURIComponent(chain)}/${encodeURIComponent(contractAddress)}/${encodeURIComponent(item.tokenId)}" target="_blank" rel="noopener" onclick="event.stopPropagation()">&#8599;</a></td>
+        <td><a href="${openSeaItemUrl(chain, contractAddress, item.tokenId)}" target="_blank" rel="noopener" onclick="event.stopPropagation()">&#8599;</a></td>
       </tr>
       <tr class="expand-row" id="expand-${escapeHtml(item.tokenId)}">
         <td colspan="10" class="expand-cell">
@@ -1613,7 +1626,7 @@ function exportCSV() {
     item.valueScore ?? '', item.price != null ? formatPrice(item.price) : '',
     csvSafe(item.currency), csvSafe(item.ownerName || item.owner || ''), item.rarityRank || '',
     ...activeTiers.map(t => item.tierCounts[t.name] || 0),
-    item.isBargain ? 'Yes' : '', csvSafe(`https://opensea.io/assets/${encodeURIComponent(lastChain)}/${encodeURIComponent(lastContract)}/${encodeURIComponent(item.tokenId)}`)
+    item.isBargain ? 'Yes' : '', csvSafe(openSeaItemUrl(lastChain, lastContract, item.tokenId))
   ]);
   const csv = [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
   const blob = new Blob([csv], { type: 'text/csv' });
