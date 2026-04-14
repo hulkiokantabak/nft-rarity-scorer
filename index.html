@@ -548,6 +548,9 @@
   </div>
 </div>
 
+<!-- Portfolio summary (appears after a Portfolio run; never on Analyze/Compare) -->
+<div class="panel" id="portfolioSummary" style="display:none; max-width:960px;"></div>
+
 <!-- Snapshots (appears after first analysis, for the primary collection) -->
 <div class="panel" id="snapshotsPanel" style="display:none; max-width:960px;">
   <div class="panel-title" style="cursor:pointer; user-select:none; display:flex; align-items:center; gap:6px;" onclick="toggleSnapshotsPanel()">
@@ -1000,9 +1003,10 @@ function cancelAnalysis() {
 async function analyze() {
   if (isRunning) return;
   hideError();
-  // A new primary analysis invalidates any prior comparison.
+  // A new primary analysis invalidates any prior comparison or portfolio summary.
   compareResult = null;
   renderCompareStats();
+  clearPortfolioSummary();
   viewingPortfolio = false;
   const apiKey = getApiKey();
   if (!apiKey) { showError('Please enter your OpenSea API key first.'); return; }
@@ -1480,6 +1484,52 @@ function reScoreWithWeights() {
   finishAnalysis(scoredItems, d.totalSupply, d.slug, d.chain, d.contractAddress, d.thresholds, d.points);
 }
 
+// ─── Portfolio summary rendering ───
+function renderPortfolioSummary(s) {
+  const el = document.getElementById('portfolioSummary');
+  if (!el) return;
+  const totalScored = s.buckets.tier + s.buckets.rank;
+  const pctScored = s.walletNfts > 0 ? Math.round((totalScored / s.walletNfts) * 100) : 0;
+  const shortAddr = `${s.addr.slice(0, 6)}…${s.addr.slice(-4)}`;
+  const unscoredList = s.unscoredCollections.length > 0
+    ? `<details style="margin-top:8px;"><summary style="cursor:pointer; font-size:0.78rem; color:var(--text-muted);">${s.unscoredCollections.length} collection${s.unscoredCollections.length === 1 ? '' : 's'} not scored</summary>
+        <ul style="margin:6px 0 0 18px; font-size:0.75rem; color:var(--text-muted);">
+          ${s.unscoredCollections.map(c => `<li><a href="https://opensea.io/collection/${encodeURIComponent(c.slug)}" target="_blank" rel="noopener" style="color:var(--accent);">${escapeHtml(c.name)}</a> &mdash; ${c.count} item${c.count === 1 ? '' : 's'} (${escapeHtml(c.reason)})</li>`).join('')}
+        </ul>
+      </details>`
+    : '';
+  const skippedNote = s.skippedCollectionsCount > 0
+    ? `<div style="font-size:0.75rem; color:var(--text-muted); margin-top:6px;">Only the top ${s.collectionsScanned} collections by holding count were scanned &mdash; ${s.skippedCollectionsCount} additional collection${s.skippedCollectionsCount === 1 ? '' : 's'} (${s.skippedCollectionItems} item${s.skippedCollectionItems === 1 ? '' : 's'}) weren't processed.</div>`
+    : '';
+  el.innerHTML = `
+    <div class="panel-title">Portfolio &middot; ${escapeHtml(shortAddr)}</div>
+    <div style="display:flex; gap:18px; flex-wrap:wrap; align-items:baseline;">
+      <div><span style="font-size:1.6rem; font-weight:700;">${s.walletNfts}</span> <span style="font-size:0.75rem; color:var(--text-muted);">items</span></div>
+      <div><span style="font-size:1.2rem; font-weight:600;">${s.collectionsTotal}</span> <span style="font-size:0.75rem; color:var(--text-muted);">collections</span></div>
+      <div style="flex:1;"></div>
+      <div style="font-size:0.82rem;">
+        <span style="color:var(--score-high); font-weight:600;">${s.buckets.tier}</span> <span style="color:var(--text-muted);">tier-scored</span>
+        &middot; <span style="color:var(--score-mid); font-weight:600;">${s.buckets.rank}</span> <span style="color:var(--text-muted);">rank-scored</span>
+        &middot; <span style="color:var(--score-low); font-weight:600;">${s.buckets.unscored}</span> <span style="color:var(--text-muted);">unscored</span>
+        <span style="color:var(--text-muted);">(${pctScored}% scored overall)</span>
+      </div>
+    </div>
+    <div style="font-size:0.72rem; color:var(--text-muted); margin-top:6px; line-height:1.5;">
+      <strong>Tier-scored</strong>: collection has trait counts, full tier scoring applied.
+      <strong>Rank-scored</strong>: no trait counts, but OpenSea rarity rank available &mdash; percentile-to-tier mapping used.
+      <strong>Unscored</strong>: neither available (usually generative/script-based collections).
+    </div>
+    ${skippedNote}
+    ${unscoredList}
+  `;
+  el.style.display = '';
+}
+
+function clearPortfolioSummary() {
+  const el = document.getElementById('portfolioSummary');
+  if (el) { el.style.display = 'none'; el.innerHTML = ''; }
+}
+
 // ─── Portfolio (score a wallet's holdings across collections) ───
 async function analyzePortfolio() {
   if (isRunning) return;
@@ -1500,6 +1550,7 @@ async function analyzePortfolio() {
   document.getElementById('resultsTable').innerHTML = '';
   compareResult = null; renderCompareStats();
   refreshSnapshotsPanel();
+  clearPortfolioSummary();
   // Weights panel re-score targets the primary collection (cachedFetchData). Hide it in portfolio
   // view so users don't accidentally clobber the cross-collection results with a primary re-score.
   document.getElementById('weightsPanel').style.display = 'none';
@@ -1514,8 +1565,10 @@ async function analyzePortfolio() {
       if (!addr) throw new Error('Could not resolve the wallet to an address.');
     }
 
-    // Fetch wallet NFTs (Ethereum only for now)
+    // Fetch wallet NFTs (Ethereum). Paginate until exhausted (sanity cap 10,000).
+    // Large portfolios (5k+) are a first-class case — no more silent 500-cap failure.
     setProgress(15, 'Fetching wallet NFTs...');
+    const PORTFOLIO_SANITY_CAP = 10000;
     let nfts = [];
     let next = null;
     let page = 0;
@@ -1527,8 +1580,8 @@ async function analyzePortfolio() {
       nfts = nfts.concat(data.nfts || []);
       next = data.next || null;
       page++;
-      setProgress(15 + Math.min(page * 4, 20), `Fetched ${nfts.length} NFTs...`);
-      if (nfts.length >= 500) break; // hard cap
+      setProgress(15 + Math.min(page, 15), `Fetched ${nfts.length} NFTs...`);
+      if (nfts.length >= PORTFOLIO_SANITY_CAP) break;
       if (next) await sleep(200);
     } while (next);
     if (nfts.length === 0) throw new Error('No NFTs found for this wallet on Ethereum.');
@@ -1542,10 +1595,10 @@ async function analyzePortfolio() {
       byCollection[slug].push(nft);
     }
     const slugs = Object.keys(byCollection).sort((a, b) => byCollection[b].length - byCollection[a].length);
-    const topSlugs = slugs.slice(0, 15);
+    const PORTFOLIO_TOP_COLLECTIONS = 25; // raised from 15 now that we handle partial success gracefully
+    const topSlugs = slugs.slice(0, PORTFOLIO_TOP_COLLECTIONS);
     if (topSlugs.length === 0) throw new Error('NFTs found but none had a collection slug.');
 
-    // Per collection: fetch metadata + trait counts, score the wallet's items
     const portfolioItems = [];
     const thresholds = cachedFetchData?.thresholds || [2, 5, 20];
     const points = cachedFetchData?.points || [7, 3, 1];
@@ -1560,6 +1613,14 @@ async function analyzePortfolio() {
     const scorePairs = document.getElementById('scorePairs').checked;
     const bonuses = getBonuses();
 
+    // Three-tier scoring cascade:
+    //   (1) /traits endpoint available   → full tier scoring (sum of trait points)
+    //   (2) nft.rarity.rank available    → rank-percentile scoring: (rank/supply*100) → classifyTrait tier
+    //   (3) neither                      → unscored, still shown in summary
+    // Partial success is the design goal — never fail if anything was fetched.
+    const buckets = { tier: 0, rank: 0, unscored: 0 };
+    const unscoredCollections = []; // {slug, name, count, reason}
+
     for (let i = 0; i < topSlugs.length; i++) {
       const slug = topSlugs[i];
       const pct = 35 + Math.round((i / topSlugs.length) * 60);
@@ -1568,7 +1629,11 @@ async function analyzePortfolio() {
         const colData = await apiGet(`https://api.opensea.io/api/v2/collections/${slug}`, apiKey);
         const totalSupply = colData.total_supply || 0;
         const contractAddress = (colData.contracts || [])[0]?.address || '';
-        if (!totalSupply || !contractAddress) continue;
+        if (!totalSupply || !contractAddress) {
+          buckets.unscored += byCollection[slug].length;
+          unscoredCollections.push({ slug, name: colData.name || slug, count: byCollection[slug].length, reason: 'collection metadata incomplete' });
+          continue;
+        }
 
         let traitCounts = {};
         try {
@@ -1582,10 +1647,9 @@ async function analyzePortfolio() {
           }
         } catch {}
 
-        // Without trait counts we can't score — skip this collection but keep going
-        if (Object.keys(traitCounts).length === 0) continue;
+        const hasTraits = Object.keys(traitCounts).length > 0;
 
-        const items = byCollection[slug].map(nft => ({
+        const baseItems = byCollection[slug].map(nft => ({
           tokenId: nft.identifier,
           name: nft.name || `#${nft.identifier}`,
           image: nft.image_url || null,
@@ -1599,26 +1663,72 @@ async function analyzePortfolio() {
           collectionName: colData.name || slug
         }));
 
-        const allTraitTypes = buildTraitTypes(traitCounts);
-        const missingCountByType = buildMissingCountByType(traitCounts, totalSupply);
-        const pairCounts = scorePairs ? buildPairCounts(items) : null;
-        const scored = items.map(item => scoreItem(item, traitCounts, totalSupply, thresholds, points, allTraitTypes, scoreMissing, missingCountByType, scorePairs, pairCounts, bonuses.missing, bonuses.combo));
-        portfolioItems.push(...scored);
+        if (hasTraits) {
+          const allTraitTypes = buildTraitTypes(traitCounts);
+          const missingCountByType = buildMissingCountByType(traitCounts, totalSupply);
+          const pairCounts = scorePairs ? buildPairCounts(baseItems) : null;
+          const scored = baseItems.map(item => scoreItem(item, traitCounts, totalSupply, thresholds, points, allTraitTypes, scoreMissing, missingCountByType, scorePairs, pairCounts, bonuses.missing, bonuses.combo));
+          scored.forEach(s => { s.scoringMethod = 'tier'; });
+          portfolioItems.push(...scored);
+          buckets.tier += scored.length;
+        } else {
+          // Rank-percentile fallback: works for generative/ArtBlocks where OpenSea exposes rarity rank but not per-trait counts.
+          const ranked = baseItems.filter(it => it.rarity && typeof it.rarity.rank === 'number' && it.rarity.rank > 0);
+          const unrankedCount = baseItems.length - ranked.length;
+          if (ranked.length > 0) {
+            const scored = ranked.map(item => {
+              const pctOfSupply = (item.rarity.rank / totalSupply) * 100;
+              const { tier, pts } = classifyTrait(pctOfSupply, thresholds, points);
+              const tierCounts = {};
+              activeTiers.forEach(t => tierCounts[t.name] = 0);
+              if (tierCounts[tier] !== undefined) tierCounts[tier] = 1;
+              return {
+                tokenId: item.tokenId, name: item.name, image: item.image,
+                price: item.price, currency: item.currency || 'ETH',
+                rarityRank: item.rarity.rank, totalSupply,
+                totalScore: pts,
+                owner: item.owner, ownerName: null,
+                chain: item.chain, contractAddress: item.contractAddress,
+                collectionSlug: item.collectionSlug, collectionName: item.collectionName,
+                tierCounts,
+                mainTraits: [], specialTraits: [], pairScores: [],
+                scoringMethod: 'rank'
+              };
+            });
+            portfolioItems.push(...scored);
+            buckets.rank += scored.length;
+          }
+          if (unrankedCount > 0 || ranked.length === 0) {
+            const skipCount = ranked.length === 0 ? baseItems.length : unrankedCount;
+            buckets.unscored += skipCount;
+            unscoredCollections.push({ slug, name: colData.name || slug, count: skipCount, reason: ranked.length === 0 ? 'no trait data, no OpenSea rarity rank' : 'no trait data; some items lacked rarity rank' });
+          }
+        }
       } catch (e) {
-        console.warn(`Failed to score ${slug}:`, e.message);
+        console.warn(`Failed to process ${slug}:`, e.message);
+        buckets.unscored += byCollection[slug].length;
+        unscoredCollections.push({ slug, name: slug, count: byCollection[slug].length, reason: 'fetch error' });
       }
     }
 
-    if (portfolioItems.length === 0) throw new Error('Could not score any items. Collections may lack trait data.');
+    const skippedCollectionsCount = Math.max(0, slugs.length - topSlugs.length);
+    const skippedCollectionItems = slugs.slice(PORTFOLIO_TOP_COLLECTIONS).reduce((n, s) => n + byCollection[s].length, 0);
+    const walletNfts = nfts.length;
 
-    // Use finishAnalysis to compute valueScore/isBargain + render.
-    // For portfolio we keep the primary cachedFetchData intact so re-scoring with weights still works for the primary.
-    setProgress(PROGRESS.scoring, 'Scoring complete, rendering...');
+    // Render the always-visible summary first. It shows even when nothing scored — never a dead end.
+    renderPortfolioSummary({ walletNfts, collectionsScanned: topSlugs.length, collectionsTotal: slugs.length, skippedCollectionsCount, skippedCollectionItems, buckets, unscoredCollections, addr });
+
+    if (portfolioItems.length === 0) {
+      // Not a fatal error anymore — summary is already on screen. Just inform.
+      showError(`Fetched ${walletNfts} NFTs from ${slugs.length} collections. None of the top ${topSlugs.length} collections had scorable data — see the portfolio summary for per-collection breakdown.`);
+      return;
+    }
+
+    setProgress(PROGRESS.scoring, 'Rendering portfolio...');
     finishAnalysis(portfolioItems, portfolioItems.length, `portfolio:${addr.slice(0,6)}...`, 'ethereum', '', thresholds, points, true);
 
-    // Update stats label + hide floor (mixed currencies would mislead)
-    document.getElementById('statCountLabel').textContent = 'Portfolio Items';
-    document.getElementById('statSupply').textContent = topSlugs.length + ' collections';
+    document.getElementById('statCountLabel').textContent = 'Scored Items';
+    document.getElementById('statSupply').textContent = topSlugs.length + ' / ' + slugs.length + ' collections';
   } catch (e) {
     if (e.name === 'AbortError') showError('Portfolio scoring cancelled.');
     else showError(e.message);
@@ -1781,6 +1891,18 @@ async function runCompareAnalysis(slug, apiKey, tierConfig, pStart, pEnd, prefet
   }
 
   const minS = Math.min(...scores), maxS = Math.max(...scores);
+  const sortedScores = [...scores].sort((a, b) => a - b);
+  const median = sortedScores.length === 0 ? 0
+    : sortedScores.length % 2 === 0
+      ? Math.round((sortedScores[sortedScores.length / 2 - 1] + sortedScores[sortedScores.length / 2]) / 2)
+      : sortedScores[Math.floor(sortedScores.length / 2)];
+
+  // "% in rarest tier" = share of listed items with at least one trait in the rarest-configured tier.
+  // activeTiers is sorted by threshold ascending, so activeTiers[0] is the rarest band.
+  const rarestTierName = activeTiers[0]?.name || 'orange';
+  const rarestCount = scored.filter(it => it.tierCounts && it.tierCounts[rarestTierName] > 0).length;
+  const rarestTierPct = scored.length > 0 ? Math.round((rarestCount / scored.length) * 100) : 0;
+
   const BINS = 12;
   const binWidth = Math.max(1, (maxS - minS) / BINS);
   const bins = Array(BINS).fill(0);
@@ -1796,7 +1918,10 @@ async function runCompareAnalysis(slug, apiKey, tierConfig, pStart, pEnd, prefet
     count: scored.length,
     topScore: maxS,
     avgScore: Math.round(scores.reduce((s, v) => s + v, 0) / scores.length),
+    medianScore: median,
     lowScore: minS,
+    rarestTierName,
+    rarestTierPct,
     floorPrice, floorCurrency,
     histogram: { min: minS, max: maxS, bins }
   };
@@ -1804,48 +1929,129 @@ async function runCompareAnalysis(slug, apiKey, tierConfig, pStart, pEnd, prefet
 
 function renderCompareTabResults(A, B) {
   const el = document.getElementById('compareResultsArea');
+
+  // Shared histogram axis — this is what makes the two cards actually comparable.
+  const sMinRaw = Math.min(A.histogram?.min ?? Infinity, B.histogram?.min ?? Infinity);
+  const sMaxRaw = Math.max(A.histogram?.max ?? -Infinity, B.histogram?.max ?? -Infinity);
+  const sharedValid = isFinite(sMinRaw) && isFinite(sMaxRaw) && sMaxRaw > sMinRaw;
+  const sMin = sharedValid ? sMinRaw : null;
+  const sMax = sharedValid ? sMaxRaw : null;
+
+  const rarestTierName = A.rarestTierName || B.rarestTierName || activeTiers[0]?.name || 'orange';
+  const rarestTierColor = (activeTiers.find(t => t.name === rarestTierName) || {}).color || 'var(--score-high)';
+  const isValidHex = isValidHexColor(rarestTierColor);
+  const heroColor = isValidHex ? rarestTierColor : 'var(--score-high)';
+
   const cardFor = (r) => {
     const floor = r.floorPrice != null ? `${formatPrice(r.floorPrice)} ${escapeHtml(r.floorCurrency)}` : '—';
     const safeImg = r.imageUrl && r.imageUrl.startsWith('https://') ? r.imageUrl : '';
+    const histHtml = renderMiniHistogram(r.histogram, sMin, sMax);
     return `
       <div class="compare-card">
         <h3>
           ${safeImg ? `<img src="${escapeHtml(safeImg)}" alt="" style="width:28px; height:28px; border-radius:4px; object-fit:cover;">` : ''}
           <span>${escapeHtml(r.name)}</span>
         </h3>
-        <div class="col-sub"><a href="https://opensea.io/collection/${encodeURIComponent(r.slug)}" target="_blank" rel="noopener" style="color:var(--accent); text-decoration:none;">${escapeHtml(r.slug)}</a> &middot; ${r.totalSupply} items total</div>
+        <div class="col-sub"><a href="https://opensea.io/collection/${encodeURIComponent(r.slug)}" target="_blank" rel="noopener" style="color:var(--accent); text-decoration:none;">${escapeHtml(r.slug)}</a> &middot; ${r.totalSupply} items total &middot; ${r.count} listed</div>
+        <div style="padding:10px 0; border-top:1px solid var(--border); border-bottom:1px solid var(--border); text-align:center;">
+          <div style="font-size:2rem; font-weight:800; line-height:1; color:${heroColor};">${r.rarestTierPct}%</div>
+          <div style="font-size:0.7rem; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.8px; margin-top:2px;">in rarest tier (${escapeHtml(rarestTierName)})</div>
+        </div>
         <div class="compare-stat-row">
-          <div class="compare-stat"><div class="num">${r.count}</div><div class="lbl">Listed</div></div>
-          <div class="compare-stat"><div class="num">${r.topScore}</div><div class="lbl">Top</div></div>
-          <div class="compare-stat"><div class="num">${r.avgScore}</div><div class="lbl">Avg</div></div>
-          <div class="compare-stat"><div class="num">${r.lowScore}</div><div class="lbl">Low</div></div>
+          <div class="compare-stat"><div class="num">${r.medianScore}</div><div class="lbl">Median Score</div></div>
           <div class="compare-stat"><div class="num">${floor}</div><div class="lbl">Floor</div></div>
         </div>
-        <div>${renderMiniHistogram(r.histogram)}</div>
+        ${histHtml ? `<div style="margin-top:2px;">${histHtml}</div>` : ''}
       </div>`;
   };
-  el.innerHTML = cardFor(A) + cardFor(B);
+
+  const explainer = `
+    <div style="grid-column:1 / -1; padding:8px 12px; background:var(--bg); border:1px dashed var(--border); border-radius:6px; margin-bottom:4px; font-size:0.78rem; color:var(--text-muted); line-height:1.5;">
+      <strong style="color:var(--text);">How to read this:</strong>
+      the headline <strong>% in rarest tier</strong> is the share of listed items with at least one trait in your currently-defined rarest band (${escapeHtml(rarestTierName)}).
+      Median is used instead of average &mdash; it's robust when listings are thin.
+      The two histograms share one x-axis so their shapes are directly comparable (wider spread = more score variety; single narrow bar = uniform).
+    </div>`;
+
+  const summary = buildCompareSummary(A, B, rarestTierName);
+  const summaryBlock = `
+    <div style="grid-column:1 / -1; padding:10px 12px; margin-top:4px; background:var(--card-bg); border:1px solid var(--border); border-radius:6px; font-size:0.86rem; line-height:1.5;">
+      ${summary}
+    </div>`;
+
+  el.innerHTML = explainer + cardFor(A) + cardFor(B) + summaryBlock;
   el.style.display = 'grid';
 }
 
-function renderMiniHistogram(h) {
+function buildCompareSummary(A, B, rarestTierName) {
+  const parts = [];
+  // Rarest-tier comparison
+  if (A.rarestTierPct !== B.rarestTierPct) {
+    const winner = A.rarestTierPct > B.rarestTierPct ? A : B;
+    const loser = A.rarestTierPct > B.rarestTierPct ? B : A;
+    const diff = winner.rarestTierPct - loser.rarestTierPct;
+    parts.push(`<strong>${escapeHtml(winner.name)}</strong> has ${diff}pp more of its listings in the ${escapeHtml(rarestTierName)} tier (${winner.rarestTierPct}% vs ${loser.rarestTierPct}%)`);
+  } else if (A.rarestTierPct > 0 || B.rarestTierPct > 0) {
+    parts.push(`both collections have ${A.rarestTierPct}% of listings in the ${escapeHtml(rarestTierName)} tier`);
+  }
+  // Median comparison
+  if (A.medianScore !== B.medianScore && A.medianScore > 0 && B.medianScore > 0) {
+    const winner = A.medianScore > B.medianScore ? A : B;
+    const loser = A.medianScore > B.medianScore ? B : A;
+    const ratio = (winner.medianScore / Math.max(1, loser.medianScore)).toFixed(2);
+    parts.push(`<strong>${escapeHtml(winner.name)}</strong>'s median score is ${ratio}× <strong>${escapeHtml(loser.name)}</strong>'s`);
+  }
+  // Floor comparison
+  if (A.floorPrice != null && B.floorPrice != null && A.floorPrice > 0 && B.floorPrice > 0) {
+    const cheaper = A.floorPrice < B.floorPrice ? A : B;
+    const pricier = A.floorPrice < B.floorPrice ? B : A;
+    const ratio = (pricier.floorPrice / cheaper.floorPrice).toFixed(2);
+    parts.push(`<strong>${escapeHtml(cheaper.name)}</strong>'s floor is ${ratio}× cheaper (${formatPrice(cheaper.floorPrice)} vs ${formatPrice(pricier.floorPrice)} ${escapeHtml(pricier.floorCurrency || 'ETH')})`);
+  }
+  if (parts.length === 0) return '<span style="color:var(--text-muted);">Collections look very similar on these axes.</span>';
+  return parts.map(p => p.charAt(0).toUpperCase() + p.slice(1)).join('. ') + '.';
+}
+
+// Renders a histogram, optionally on a caller-supplied shared axis (sharedMin/sharedMax).
+// Shared axis is what makes two Compare-tab histograms visually comparable — a uniform
+// collection (min===max) then renders as a single narrow bar at its position within the
+// shared range, so the eye can compare shape across cards.
+function renderMiniHistogram(h, sharedMin, sharedMax) {
   if (!h || !Array.isArray(h.bins) || h.bins.length === 0) return '';
-  if (typeof h.min !== 'number' || typeof h.max !== 'number' || h.min === h.max) return '';
-  const W = 380, H = 40, gap = 2;
-  const BINS = h.bins.length;
-  const barW = (W - gap * (BINS - 1)) / BINS;
+  if (typeof h.min !== 'number' || typeof h.max !== 'number') return '';
+  const W = 380, H = 40;
+  const useShared = typeof sharedMin === 'number' && typeof sharedMax === 'number' && sharedMax > sharedMin;
+  const axisMin = useShared ? sharedMin : h.min;
+  const axisMax = useShared ? sharedMax : h.max;
+  const axisSpan = axisMax - axisMin;
+  if (axisSpan <= 0) return '';
   const maxCount = Math.max(...h.bins);
   if (maxCount <= 0) return '';
-  const binWidth = (h.max - h.min) / BINS;
+  const baseLine = `<line x1="0" y1="${H-0.5}" x2="${W}" y2="${H-0.5}" stroke="var(--border)" stroke-width="0.5"/>`;
+
+  // Uniform distribution — every listed item has the same score. Show a single narrow bar at
+  // the correct position within the axis so the eye still knows where this collection sits.
+  if (h.min === h.max) {
+    const frac = (h.min - axisMin) / axisSpan;
+    const x = frac * W;
+    const barW = Math.max(3, W / 60);
+    const color = frac < 0.33 ? 'var(--score-low)' : frac < 0.66 ? 'var(--score-mid)' : 'var(--score-high)';
+    return `<svg viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" style="max-width:100%;" aria-label="All items score ${h.min}"><rect x="${Math.max(0, x - barW/2)}" y="0" width="${barW}" height="${H}" fill="${color}" rx="2"><title>All ${h.bins.reduce((s,v)=>s+v,0)} items score ${h.min}</title></rect>${baseLine}</svg>`;
+  }
+
+  const BINS = h.bins.length;
+  const binOwnSpan = (h.max - h.min) / BINS;
+  const binScreenW = (binOwnSpan / axisSpan) * W;
   const rects = h.bins.map((count, i) => {
-    const hh = maxCount > 0 ? (count / maxCount) * H : 0;
-    const x = i * (barW + gap);
-    const ratio = i / (BINS - 1 || 1);
+    const hh = (count / maxCount) * H;
+    const binLeft = h.min + i * binOwnSpan;
+    const x = ((binLeft - axisMin) / axisSpan) * W;
+    const ratio = ((binLeft + binOwnSpan / 2) - axisMin) / axisSpan;
     const color = ratio < 0.33 ? 'var(--score-low)' : ratio < 0.66 ? 'var(--score-mid)' : 'var(--score-high)';
-    const lo = Math.round(h.min + i * binWidth), hi = Math.round(h.min + (i + 1) * binWidth);
-    return `<rect x="${x}" y="${H - hh}" width="${barW}" height="${hh}" fill="${color}" rx="2"><title>Score ${lo}-${hi}: ${count} items</title></rect>`;
+    const lo = Math.round(binLeft), hi = Math.round(binLeft + binOwnSpan);
+    return `<rect x="${x}" y="${H - hh}" width="${Math.max(1, binScreenW - 1)}" height="${hh}" fill="${color}" rx="2"><title>Score ${lo}-${hi}: ${count} items</title></rect>`;
   }).join('');
-  return `<svg viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" style="max-width:100%;">${rects}</svg>`;
+  return `<svg viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" style="max-width:100%;">${rects}${baseLine}</svg>`;
 }
 
 function clearCompareTab() {
