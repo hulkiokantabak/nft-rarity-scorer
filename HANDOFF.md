@@ -6,7 +6,7 @@ A single-page web app that scores NFTs from OpenSea collections based on trait r
 - **Live:** https://hulkiokantabak.github.io/nft-rarity-scorer/
 - **Repo:** `hulkiokantabak/nft-rarity-scorer` (branch: `master`)
 - **Deploy:** GitHub Pages, served from `master` root
-- **Single file:** `nft-rarity-scorer/index.html` (~1600 lines, CSS + JS inline)
+- **Single file:** `nft-rarity-scorer/index.html` (~2,958 lines, CSS + JS inline)
 
 ## Running Locally
 Open `index.html` directly in a browser, or serve with any static server. No build step.
@@ -52,6 +52,16 @@ Typical: many minutes for a 1000-item collection (~100 enrichment calls + owner 
 - **ENS / username display** — resolves owner addresses via `/accounts/{addr}`, shows `ens_name` or `username` when available (falls back to shortened address). In-memory `ownerNameCache` Map avoids duplicate lookups.
 - **Full enrichment in All mode** — individual NFT fetches for owner + rarity data.
 - **Listing price merge in All mode** — bulk + listings endpoint results combined.
+
+**Added in the April 2026 sprint:**
+- **Tabbed layout** — Analyze / Compare / Portfolio tab bar; active tab persisted to `nft_scorer_active_tab`.
+- **Compare tab** — self-contained two-collection comparison: verifies both slugs, runs both in Listed mode with the current tier config, renders side-by-side cards (% in rarest tier, median score, floor, shared-axis histograms) plus an auto-generated summary.
+- **Portfolio tab** — scores a wallet's holdings across collections: resolves address/ENS, paginates the wallet's Ethereum NFTs, groups by collection (top 25 by count), scores each via a three-tier cascade (trait scoring → rank-percentile → unscored), renders a per-collection summary panel.
+- **Snapshot history** — saves stats + histogram per collection to `nft_scorer_snapshots` (max 50 each); a saved snapshot can be overlaid on a later analysis for comparison.
+- **Pair rarity scoring** — "Score trait combinations" option: each item's top 3 rarest trait pairs earn tier points with a configurable bonus multiplier (default 2.0×); missing-trait scoring gained its own multiplier (default 1.5×).
+- **Config export/import** — full scorer config (collection, tiers, weights, options, active tab) round-trips as a JSON file.
+- **Persistent owner-name cache** — `nft_scorer_owner_cache` in localStorage with 7-day TTL, capped at 5000 entries.
+- **Parallelized All mode** — listing-price fetch and item enrichment run concurrently.
 
 ## Key State Variables (globals at top of `<script>`)
 ```javascript
@@ -114,30 +124,34 @@ let isRunning = false;
 ## Known Tradeoffs
 - **All mode is slow** — unavoidable given OpenSea's bulk endpoint lacks owner/rarity/price. Could be mitigated with higher batch concurrency but would risk 429 throttling.
 - **Rate limit is shared across tabs** — running Listed + All in parallel slows both.
-- **Owner name cache is in-memory only** — resets on page reload. Could persist to localStorage but TTL concerns make this non-obvious.
 - **No server-side component** — no way to background-process long All-mode scans; closing the tab aborts.
 
 ## Recent Commit History (context)
-- `56ccd91` — Final editorial pass (apiGet retry fallthrough, dead state cleanup, array-mutation fix, progress bar regression)
-- `62aefb8` — Fix `batch is not defined` error in resolveOwnerNames
-- `e8257bd` — Fetch listing prices in All mode
-- `ff2ceab` — Remove 200-owner cap on name resolution
-- Earlier: feature commits for 10 planned improvements + ENS display + All-mode enrichment
+- `794f6bd` — Portfolio cascade + Compare rework (per Game Design Masters punch-list)
+- `f09577c` — Configurable bonus multipliers for missing-trait and pair scoring
+- `c8e6e02` — Polish pass: snapshot histogram overlay, copy link, active-tab, cancel feedback, auto re-score
+- `6c1db37` — Tabbed layout: Analyze / Compare / Portfolio
+- `ef79283` — Snapshot history: save and overlay past analyses
+- `f32226b` — Portfolio view: score a wallet's holdings across collections
+- `4880173` — Compare two collections side-by-side (stats overlay)
+- Earlier: `56ccd91` / `62aefb8` / `e8257bd` / `ff2ceab` (pre-sprint editorial + fixes), feature commits for 10 planned improvements + ENS display + All-mode enrichment
 
 ## File Layout
 ```
 nft-rarity-scorer/
   index.html       ← the entire app
+  CLAUDE.md        ← repo guide for Claude Code sessions
   HANDOFF.md       ← this document
+  README.md        ← public-facing readme
 ```
 
 ## Extension Points
-If picking this up later:
-- **Faster All mode:** could parallelize `enrichItems` and `resolveOwnerNames` phases instead of serializing.
-- **Persistent name cache:** localStorage with 24h TTL keyed by address.
-- **Multi-collection portfolios:** current architecture is per-collection; portfolio view would need a new top-level route.
-- **Trait combination scoring:** current model scores each trait independently; rare *combinations* aren't rewarded.
-- **Export settings:** save/load entire scorer config (tiers + weights + filters) as JSON file.
+All five extension points from the original handoff have since shipped (April 2026 sprint — see "Added in the April 2026 sprint" above):
+- **Faster All mode:** shipped — listing-price fetch and item enrichment parallelized.
+- **Persistent name cache:** shipped — `nft_scorer_owner_cache`, 7-day TTL.
+- **Multi-collection portfolios:** shipped — Portfolio tab.
+- **Trait combination scoring:** shipped — pair rarity option.
+- **Export settings:** shipped — config export/import as JSON.
 
 ## Testing Checklist (when making changes)
 1. Listed mode on a small collection (e.g., ~100 items) — verify score + sort + pagination.

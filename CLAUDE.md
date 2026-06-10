@@ -4,7 +4,7 @@ Browser tool to score NFT collections by trait rarity using the OpenSea public A
 
 ## Stack
 - Vanilla JavaScript
-- Single HTML file (`index.html`) — all CSS, JS, and HTML embedded (~1,618 lines)
+- Single HTML file (`index.html`) — all CSS, JS, and HTML embedded (~2,958 lines)
 - OpenSea API (`https://api.opensea.io`) — requires a user-supplied API key, stored in browser `localStorage`
 - No framework, no build step
 

@@ -19,6 +19,9 @@ No wallet needed. No download. Bring your own OpenSea API key, paste a collectio
 - Standard scoring: Common / Uncommon / Rare / Legendary
 - Custom scoring: up to 10 user-defined tiers with custom names, colours, and thresholds
 - Missing trait scoring option
+- Compare two collections side-by-side — stats scored with your tier config
+- Portfolio scoring — score a wallet's holdings (address or ENS) across collections
+- Snapshot history — save analyses locally and overlay past stats on later runs
 - CSV export
 - Shareable URLs — configuration serialised into query params
 - Dark / Light theme toggle
