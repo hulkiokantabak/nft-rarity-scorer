@@ -1080,8 +1080,8 @@ async function analyze() {
     setProgress(PROGRESS.traitData, 'Fetching trait data...');
     let traitCounts = {};
     try {
-      const traitData = await apiGet(`https://api.opensea.io/api/v2/collections/${slug}/traits`, apiKey);
-      for (const [traitType, values] of Object.entries(traitData)) {
+      const traitData = await apiGet(`https://api.opensea.io/api/v2/traits/${slug}`, apiKey);
+      for (const [traitType, values] of Object.entries(traitData.counts || {})) {
         if (typeof values === 'object' && values !== null) {
           for (const [val, count] of Object.entries(values)) {
             if (typeof count === 'number') traitCounts[`${traitType}::${val}`] = count;
@@ -1637,8 +1637,8 @@ async function analyzePortfolio() {
 
         let traitCounts = {};
         try {
-          const traitData = await apiGet(`https://api.opensea.io/api/v2/collections/${slug}/traits`, apiKey);
-          for (const [type, values] of Object.entries(traitData)) {
+          const traitData = await apiGet(`https://api.opensea.io/api/v2/traits/${slug}`, apiKey);
+          for (const [type, values] of Object.entries(traitData.counts || {})) {
             if (typeof values === 'object' && values !== null) {
               for (const [val, count] of Object.entries(values)) {
                 if (typeof count === 'number') traitCounts[`${type}::${val}`] = count;
@@ -1673,6 +1673,9 @@ async function analyzePortfolio() {
           buckets.tier += scored.length;
         } else {
           // Rank-percentile fallback: works for generative/ArtBlocks where OpenSea exposes rarity rank but not per-trait counts.
+          // The account-NFTs list endpoint does NOT include a rarity field, so enrich each holding via the
+          // per-NFT endpoint (same call enrichItems uses) to populate it.rarity.rank before the rank filter.
+          await enrichItems(baseItems, 'ethereum', contractAddress, apiKey, pct, pct);
           const ranked = baseItems.filter(it => it.rarity && typeof it.rarity.rank === 'number' && it.rarity.rank > 0);
           const unrankedCount = baseItems.length - ranked.length;
           if (ranked.length > 0) {
@@ -1797,6 +1800,18 @@ async function analyzeCompareTab() {
   if (slugA === slugB) { showError('Collections A and B must differ.'); return; }
 
   const tierConfig = getCurrentTierConfig();
+  // scoreItem/classifyTrait read the global activeTiers to build per-tier counts and the
+  // "% in rarest tier" headline. Compare never ran analyze(), so seed activeTiers from the
+  // same config (custom rows, or the standard orange/purple/blue trio) before scoring.
+  if (currentTierMode === 'standard') {
+    activeTiers = [
+      { name: 'orange', color: '#ff8c00', threshold: tierConfig.thresholds[0], points: tierConfig.points[0] },
+      { name: 'purple', color: '#9b59b6', threshold: tierConfig.thresholds[1], points: tierConfig.points[1] },
+      { name: 'blue',   color: '#3498db', threshold: tierConfig.thresholds[2], points: tierConfig.points[2] }
+    ];
+  } else {
+    activeTiers = getCustomTiers();
+  }
   isRunning = true;
   const btn = document.getElementById('compareBtn');
   btn.disabled = true;
@@ -1852,8 +1867,8 @@ async function runCompareAnalysis(slug, apiKey, tierConfig, pStart, pEnd, prefet
   setProgress(pStart + Math.round(span * 0.1), `[${slug}] fetching trait data...`);
   let traitCounts = {};
   try {
-    const traitData = await apiGet(`https://api.opensea.io/api/v2/collections/${slug}/traits`, apiKey);
-    for (const [type, values] of Object.entries(traitData)) {
+    const traitData = await apiGet(`https://api.opensea.io/api/v2/traits/${slug}`, apiKey);
+    for (const [type, values] of Object.entries(traitData.counts || {})) {
       if (typeof values === 'object' && values !== null) {
         for (const [val, count] of Object.entries(values)) {
           if (typeof count === 'number') traitCounts[`${type}::${val}`] = count;
@@ -2122,6 +2137,10 @@ function buildPairCounts(items) {
       }
     }
   }
+  // Record the population the pairs were counted over so scoreItem normalizes pair pct by the
+  // SAME denominator (a listed/wallet subset, not the full collection supply). Non-enumerable so
+  // it never appears as a pair key in the count loops.
+  Object.defineProperty(counts, '_population', { value: items.length, enumerable: false });
   return counts;
 }
 
@@ -2188,6 +2207,10 @@ function scoreItem(item, traitCounts, totalSupply, thresholds, points, allTraitT
   // Score rare trait pairs (top N rarest only). Combo bonus applied to each pair's base tier points.
   let pairScores = [];
   if (scorePairs && pairCounts) {
+    // Pair counts come from whatever population buildPairCounts saw (full collection in All mode,
+    // listed/wallet subset otherwise). Normalize by that same population, not totalSupply, or subset
+    // pairs are systematically inflated into the rarest tier. Falls back to totalSupply for safety.
+    const pairDenominator = pairCounts._population > 0 ? pairCounts._population : totalSupply;
     const itemKeys = item.traits.filter(t => !t.type.startsWith('_')).map(t => ({ type: t.type, value: t.value, key: `${t.type}::${t.value}` }));
     const candidates = [];
     for (let i = 0; i < itemKeys.length; i++) {
@@ -2195,7 +2218,7 @@ function scoreItem(item, traitCounts, totalSupply, thresholds, points, allTraitT
         const k = pairKey(itemKeys[i].key, itemKeys[j].key);
         const count = pairCounts[k] || 0;
         if (count === 0) continue;
-        const pct = totalSupply > 0 ? (count / totalSupply) * 100 : 0;
+        const pct = pairDenominator > 0 ? (count / pairDenominator) * 100 : 0;
         const { tier, pts: basePts } = classifyTrait(pct, thresholds, points);
         const pts = Math.round(basePts * cBonus);
         if (pts > 0) candidates.push({ a: itemKeys[i], b: itemKeys[j], count, pct, tier, pts });
