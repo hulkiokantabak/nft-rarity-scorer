@@ -1,0 +1,17 @@
+{
+  "name": "nft-rarity-scorer",
+  "version": "1.1.1",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test",
+    "check": "node --check boot.js && node --check app.js && node --check core.js && node --check api.js && node --check config.js && node --check storage.js && node --check scripts/serve.mjs",
+    "start": "node scripts/serve.mjs"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "devDependencies": {
+    "linkedom": "^0.18.13"
+  }
+}

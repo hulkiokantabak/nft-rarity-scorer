@@ -1,35 +1,41 @@
-# NFT Rarity Scorer
-
-Browser tool to score NFT collections by trait rarity using the OpenSea public API.
-
-## Stack
-- Vanilla JavaScript
-- Single HTML file (`index.html`) — all CSS, JS, and HTML embedded (~2,958 lines)
-- OpenSea API (`https://api.opensea.io`) — requires a user-supplied API key, stored in browser `localStorage`
-- No framework, no build step
-
-## How to Run
-- Open `index.html` directly in browser — no server or build required
-- Requires internet (calls OpenSea API at runtime)
-
-## Deployment
-- GitHub repo: https://github.com/hulkiokantabak/nft-rarity-scorer
-- Live site: https://hulkiokantabak.github.io/nft-rarity-scorer/
-- Deploy: push `index.html` to `master` — GitHub Pages serves it directly
+# NFT Rarity Scorer — repository guide
 
 ## Architecture
-Everything is in `index.html`:
+Vanilla JavaScript static site, no production build and no browser runtime dependencies.
+Native modules: app.js, core.js, api.js, config.js, storage.js.
+HTML: index.html. Styles: styles.css + accessibility.css.
+Use an HTTP server, not file://, because native modules require it.
 
-- **Standard tiers**: Common / Uncommon / Rare / Legendary with predefined thresholds
-- **Custom tiers**: Up to 10 user-defined tiers with names, hex colors, point values, and percentage thresholds
-- **Display modes**: Listed items only OR full collection scan
-- **URL state**: Collection slug + tier config serialised into query params — `?ct=[...]` where `ct` is `JSON.stringify`'d custom tier array — makes configs shareable as links
-- **CSV export**: Scores downloadable directly from the browser
-- API results cached in-memory to minimise repeat calls during a session
+## Local commands
+npm ci
+npm run check
+npm test
+npm start
 
-## Notes
-- Strict Content Security Policy — only OpenSea API calls permitted; no external scripts
-- Default theme: dark. User preference saved to `localStorage`
-- Custom tier URL param (`ct`) is a JSON array — handle parse errors gracefully when reading from URL
-- OpenSea API requires a user-supplied API key (no wallet); rate limits apply for heavy scans
-- GoatCounter analytics at bottom of file
+Node 22+; LinkeDOM is a dev-only dependency. Tests use synthetic data, never real credentials.
+
+## Invariants
+- Trait frequencies must be known, positive integer counts no greater than supply.
+- OpenSea numeric categories contain ranges, not frequency counts.
+- Unknown or omitted metadata must never earn rare or missing-trait points.
+- Pair and missing scores require a complete, deduplicated collection corpus.
+- Zero settings remain valid through UI, JSON, URL and scoring.
+- NFT identity is chain + contract + token ID. Preserve non-EVM case.
+- Do not compare payment currencies without matching token identity.
+- Keep OpenSea rank distinct from custom tier points; group portfolios by collection.
+- API keys go only to the OpenSea origin; no redirects with credential headers.
+- Key storage defaults to the current tab; persistence needs explicit opt-in.
+- Result provenance describes the applied config, not subsequent control edits.
+- Snapshot compatibility checks include engine/config, population, source, mode and coverage.
+- Escape untrusted text in HTML and defend CSV fields against formulas.
+
+## Deployment
+Existing GitHub Pages serves master root. All runtime assets must be released together.
+Do not change repository visibility, license, or hosting as incidental cleanup.
+Do not push master or deploy without release authorization.
+
+## Working practices
+Preserve unrelated user edits. Keep changes proportionate to this small personal tool.
+Add regression tests for correctness fixes. Use official OpenSea schemas when modifying API contracts.
+CSP still permits existing inline event handlers; this is not a claim of a strict no-inline policy.
+No analytics script should be added beside a stored key without a separate privacy/security review.
