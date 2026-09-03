@@ -9,8 +9,8 @@
 <meta name="referrer" content="no-referrer">
 <meta property="og:title" content="NFT Rarity Scorer">
 <meta property="og:description" content="Transparent, browser-based NFT trait analysis. Custom scores, not valuations.">
-<link rel="stylesheet" href="./styles.css?v=1.1.1">
-<link rel="stylesheet" href="./accessibility.css?v=1.1.1">
+<link rel="stylesheet" href="./styles.css?v=1.2.0">
+<link rel="stylesheet" href="./accessibility.css?v=1.2.0">
 </head>
 <body>
 
@@ -45,8 +45,9 @@
 </div>
 <details class="panel methodology">
   <summary>How scores work &amp; their limits</summary>
-  <p>Custom tier points are based on categorical trait frequency: count ÷ collection supply. Thresholds are exclusive. Points are multiplied by your trait weight, then rounded. A zero weight disables that trait's contribution.</p>
-  <p>Numeric ranges and internal traits are excluded. Unknown frequencies earn no points and are labelled unavailable. Missing and pair bonuses require a complete metadata scan; turning them on may take longer. Only the three rarest eligible pairs contribute, using the lower weight of their two traits.</p>
+  <p>Custom tier points use trait frequency: count ÷ collection supply. Thresholds are exclusive. Points are multiplied by your trait weight, then rounded. Special traits count too. Numeric values use exact frequencies from a complete collection scan, never API min/max ranges. Available OpenSea frequency distributions stay the same across Listed, All and Compare.</p>
+  <p>“Score missing traits / unavailable data” is opt-in. Checked: an absent trait uses its measured absence frequency when available, with your missing multiplier. An unavailable frequency is treated as rare and labelled “Assumed rare”, not 0%. Unchecked: missing or unavailable data earns no points. At the default settings, an unavailable present trait earns 7 points; an assumed absent trait earns round(7 × 1.5) = 11, before any custom weight.</p>
+  <p>Missing frequencies and exact numeric values may require a full scan. Pair bonuses require a complete collection population; only the three rarest eligible pairs contribute, using their own multiplier. Positive trait weights do not scale pair bonuses; a zero weight disables both that trait and its pairs. Assumed points are excluded from measured coverage and high-score/lower-price flags.</p>
   <p>Scores are not OpenRarity, market values, or comparable rarity measurements across collections. OpenSea rank is separate. “High score / lower price” means top-quartile score and lower-half price within the same fetched collection, chain and currency, with full trait coverage and at least three priced items. No exchange rates are assumed.</p>
 </details>
 
@@ -122,10 +123,11 @@
   <div class="custom-tiers" id="customTiers"></div>
 
   <div style="margin-top: 12px; display: flex; gap: 16px; justify-content: center; align-items: center; flex-wrap: wrap;">
-    <div class="bonus-option"><label><input type="checkbox" id="scoreMissing"> Score missing traits</label><label for="missingBonus">Multiplier</label><input type="number" id="missingBonus" value="1.5" min="0" max="10" step="0.1"></div>
+    <div class="bonus-option"><label><input type="checkbox" id="scoreMissing" aria-describedby="missingHelp"> Score missing traits / unavailable data</label><label for="missingBonus">Multiplier</label><input type="number" id="missingBonus" value="1.5" min="0" max="10" step="0.1"></div>
     <div class="bonus-option"><label><input type="checkbox" id="scorePairs"> Score trait combinations</label><label for="comboBonus">Multiplier</label><input type="number" id="comboBonus" value="2" min="0" max="10" step="0.1"></div>
     <button class="btn btn-analyze" id="analyzeBtn" onclick="analyze()">Analyze Collection</button>
   </div>
+  <p id="missingHelp" class="help-text">Checked: award rare points for missing or unavailable data; assumptions are labelled. Unchecked: those contributions are zero. Known absence uses its measured frequency.</p>
   <div style="margin-top: 8px; display: flex; gap: 8px; justify-content: center; align-items: center; flex-wrap: wrap;">
     <span style="color:var(--text-muted); font-size:0.72rem;">Full config (collection, tiers, weights, options):</span>
     <button class="btn btn-secondary" onclick="exportConfig()" style="font-size:0.72rem; padding:4px 10px;" title="Download current scorer config as JSON">Export JSON</button>
@@ -281,7 +283,7 @@
   <div style="font-size:0.75rem; color:var(--text-muted); margin-top:6px;" id="showMoreCount"></div>
 </div>
 
-<script type="module" src="./boot.js?v=1.1.1"></script>
+<script type="module" src="./boot.js?v=1.2.0"></script>
 
 </main>
 <noscript><p class="panel">JavaScript is needed for local scoring. Your API key is never required to read the project documentation.</p></noscript>

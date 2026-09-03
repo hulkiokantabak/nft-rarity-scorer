@@ -17,8 +17,11 @@ Node 22+; LinkeDOM is a dev-only dependency. Tests use synthetic data, never rea
 ## Invariants
 - Trait frequencies must be known, positive integer counts no greater than supply.
 - OpenSea numeric categories contain ranges, not frequency counts.
-- Unknown or omitted metadata must never earn rare or missing-trait points.
-- Pair and missing scores require a complete, deduplicated collection corpus.
+- Unknown/omitted data earns no points by default. Per explicit user request, the missing-data checkbox opts into assumed rare contributions; keep their status assumed, count null, frequency N/A, and exclude them from measured coverage/value flags.
+- Measured absence and pair frequencies require a complete, deduplicated collection corpus. Never confuse assumed absence with measured absence.
+- Exact numeric frequencies and underscore-prefixed special traits are scoreable; API numeric min/max are not counts. Special traits do not get missing/pair bonuses.
+- Preserve available API frequency distributions across modes; full scans supplement missing whole types and provide per-token presence/pairs. Optional enrichment cannot replace known traits within a run.
+- Pair points use the independent combo multiplier, not positive trait weights; zero trait weight excludes its pairs.
 - Zero settings remain valid through UI, JSON, URL and scoring.
 - NFT identity is chain + contract + token ID. Preserve non-EVM case.
 - Do not compare payment currencies without matching token identity.

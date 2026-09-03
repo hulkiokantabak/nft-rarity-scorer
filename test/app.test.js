@@ -14,8 +14,9 @@ Object.defineProperty(window.HTMLSelectElement.prototype, 'value', { configurabl
   set(value) { for (const o of this.querySelectorAll('option')) value === o.getAttribute('value') ? o.setAttribute('selected', '') : o.removeAttribute('selected'); } });
 window.location = location;
 let calls = [], failListings = false, omitted = false, failTraits = false, failCollection = false, cancelOwner = false, switchModeDuringFetch = false;
+let fullCorpus = false, failScan = false, numericTraits = false, omitDetailTraits = false;
 const address = '0x' + '1'.repeat(40), contracts = ['0x' + 'a'.repeat(40), '0x' + 'b'.repeat(40)];
-const nft = (contract, id = '0') => ({ identifier: id, contract, collection: 'fixture', name: contract === contracts[0] ? 'Gold zero' : 'Blue zero', image_url: '', traits: [{ trait_type: 'Color', value: contract === contracts[0] ? 'Gold' : 'Blue' }], owners: cancelOwner ? [{ address: '0x' + '3'.repeat(40) }] : [], rarity: { rank: contract === contracts[0] ? 1 : 90 }, opensea_url: `https://opensea.io/item/ethereum/${contract}/${id}` });
+const nft = (contract, id = '0') => ({ identifier: id, contract, collection: 'fixture', name: contract === contracts[0] ? 'Gold zero' : 'Blue zero', image_url: '', traits: [{ trait_type: 'Color', value: contract === contracts[0] ? 'Gold' : 'Blue' }, ...(numericTraits ? [{ trait_type: 'Level', value: contract === contracts[0] && id === '0' ? 2 : 1 }] : [])], owners: cancelOwner ? [{ address: '0x' + '3'.repeat(40) }] : [], rarity: { rank: contract === contracts[0] ? 1 : 90 }, opensea_url: `https://opensea.io/item/ethereum/${contract}/${id}` });
 const listing = (contract, value, currency = 'ETH') => ({ status: 'ACTIVE', chain: 'ethereum', asset: { contract, identifier: '0' }, price: { current: { value, decimals: 0, currency } } });
 globalThis.fetch = async (url, options = {}) => {
   const path = new URL(url).pathname; calls.push({ path, options });
@@ -23,6 +24,7 @@ globalThis.fetch = async (url, options = {}) => {
   if (path.endsWith('/nfts/batch')) {
     const ids = JSON.parse(options.body).identifiers;
     body = { nfts: ids.filter((_, i) => !omitted || i !== 0).map(i => nft(i.contract_address, i.token_id)).reverse() };
+    if (omitDetailTraits) body.nfts.forEach(n => { delete n.traits; });
   } else if (path.startsWith('/api/v2/collections/')) {
     if (failCollection) return new Response('{}', { status: 404 });
     if (switchModeDuringFetch) window.setMode('all');
@@ -34,7 +36,10 @@ globalThis.fetch = async (url, options = {}) => {
   } else if (path.startsWith('/api/v2/listings/')) {
     if (failListings) return new Response('{}', { status: 404 });
     body = { listings: [listing(contracts[0], '1'), listing(contracts[1], '10')] };
-  } else if (path.startsWith('/api/v2/collection/')) body = { nfts: contracts.map(c => nft(c)) };
+  } else if (path.startsWith('/api/v2/collection/')) {
+    if (failScan) return new Response('{}', { status: 404 });
+    body = { nfts: [...contracts.map(c => nft(c)), ...(fullCorpus ? [nft(contracts[0], '1'), ...Array.from({ length: 97 }, (_, i) => nft(contracts[1], String(i + 1)))] : [])] };
+  }
   else if (path.startsWith('/api/v2/accounts/resolve/')) body = { address };
   else if (path.includes('/account/') && path.endsWith('/nfts')) body = { nfts: contracts.map(c => nft(c)) };
   else if (path.startsWith('/api/v2/accounts/')) {
@@ -48,6 +53,7 @@ const app = await import('../app.js');
 const input = (id, value) => { document.getElementById(id).value = value; };
 const reset = () => {
   calls = []; failListings = false; omitted = false; failTraits = false; failCollection = false; cancelOwner = false; switchModeDuringFetch = false;
+  fullCorpus = false; failScan = false; numericTraits = false; omitDetailTraits = false;
   app.applyImportedConfig({ v: 2, slug: 'fixture', mode: 'listed', standard_tiers: { thresholds: [2, 5, 20], points: [7, 3, 1] }, score_missing: false, score_pairs: false });
   input('apiKey', 'test-key-not-real');
 };
@@ -102,6 +108,59 @@ test('all mode retains valid trait results when listing lookup fails', async () 
   reset(); window.setMode('all'); failListings = true; await app.analyze();
   assert.equal(app.getDisplayItems().length, 2);
   assert.match(document.getElementById('provenance').textContent, /Listing prices unavailable/);
+});
+
+test('Listed, All and bonus-enabled runs retain the same available base frequencies', async () => {
+  reset(); fullCorpus = true; await app.analyze();
+  const gold = () => app.getDisplayItems().find(i => i.contractAddress === contracts[0] && i.tokenId === '0');
+  assert.equal(gold().totalScore, 7);
+  window.setMode('all'); await app.analyze();
+  assert.equal(app.getDisplayItems().length, 100); assert.equal(gold().totalScore, 7); // scan has 2% Gold, API has 1%
+  window.setMode('listed'); document.getElementById('scoreMissing').checked = true; await app.analyze();
+  assert.equal(gold().totalScore, 7); assert.equal(gold().assumedTraits, 0);
+});
+
+test('Listed restores missing numeric frequencies with a complete scan', async () => {
+  reset(); fullCorpus = true; numericTraits = true; await app.analyze();
+  const gold = app.getDisplayItems().find(i => i.contractAddress === contracts[0]);
+  assert.equal(gold.totalScore, 14); assert.equal(gold.coverage, 1);
+  assert.match(gold.source, /full-scan additional/);
+});
+
+test('optional detail responses cannot erase All-mode traits', async () => {
+  reset(); window.setMode('all'); omitDetailTraits = true; await app.analyze();
+  const gold = app.getDisplayItems().find(i => i.contractAddress === contracts[0]);
+  assert.equal(gold.totalScore, 7); assert.equal(gold.coverage, 1);
+});
+
+test('a failed optional baseline retains base scores and explains the limitation', async () => {
+  reset(); failScan = true; document.getElementById('scorePairs').checked = true; await app.analyze();
+  assert.equal(app.getDisplayItems()[0].totalScore, 7);
+  assert.match(document.getElementById('provenance').textContent, /available base scores are retained/);
+});
+
+test('missing-data checkbox re-scores cached missing metadata on and off with clear labels', async () => {
+  reset(); omitted = true; await app.analyze();
+  const missing = () => app.getDisplayItems().find(i => i.contractAddress === contracts[0]);
+  assert.equal(missing().totalScore, 0);
+  document.getElementById('scoreMissing').checked = true;
+  document.getElementById('scoreMissing').dispatchEvent(new window.Event('change'));
+  assert.equal(missing().totalScore, 11); assert.equal(missing().assumedPoints, 11);
+  assert.match(document.getElementById('resultsGrid').textContent, /Assumed rare/);
+  app.setView('table');
+  assert.match(document.getElementById('resultsTable').textContent, /11 assumed pts/);
+  app.setView('cards');
+  assert.match(document.getElementById('provenance').textContent, /not measured frequencies/);
+  document.getElementById('scoreMissing').checked = false;
+  document.getElementById('scoreMissing').dispatchEvent(new window.Event('change'));
+  assert.equal(missing().totalScore, 0);
+});
+
+test('Portfolio respects the missing-data opt-in without inventing measured coverage', async () => {
+  reset(); omitDetailTraits = true; numericTraits = true;
+  input('walletInput', address); document.getElementById('scoreMissing').checked = true; await app.analyzePortfolio();
+  assert.ok(app.getDisplayItems().every(i => i.assumedTraits === 1 && i.assumedPoints === 7));
+  assert.ok(app.getDisplayItems().every(i => i.coverage < 1));
 });
 test('comparison fallback scans the full population, not just listings', async () => {
   reset(); failTraits = true; input('compareSlugA', 'fixture-a'); input('compareSlugB', 'fixture-b'); await app.analyzeCompareTab();
@@ -161,4 +220,5 @@ test('CSV contains identity, currency and scoring provenance without API key', a
   const original = URL.createObjectURL; URL.createObjectURL = blob => { exported = blob; return 'blob:test'; };
   try { window.exportCSV(); } finally { URL.createObjectURL = original; }
   const csv = await exported.text(); assert.ok(!csv.includes('test-key-not-real')); assert.ok(!csv.includes('pts/ETH')); assert.match(csv, /Currency/);
+  assert.match(csv, /Assumed rarity points/);
 });

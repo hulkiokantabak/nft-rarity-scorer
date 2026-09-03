@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { numberSetting, validateTiers, parseTraitCounts, countTraits, buildTraitTypes, buildPairCounts, buildMissingCountByType, scoreNFT, itemKey, listingAsset, parsePrice, normalizeNFT, addValueMetrics, configFingerprint, traitKey } from '../core.js';
+import { numberSetting, validateTiers, parseTraitCounts, countTraits, supplementTraitCounts, needsTraitScan, buildTraitTypes, buildPairCounts, buildMissingCountByType, scoreNFT, itemKey, listingAsset, parsePrice, normalizeNFT, addValueMetrics, configFingerprint, traitKey } from '../core.js';
 import { validateConfig } from '../config.js';
 
 const tiers = [2, 5, 20].map((threshold, i) => ({ name: ['orange', 'purple', 'blue'][i], color: '#3498db', threshold, points: [7, 3, 1][i] }));
@@ -25,7 +25,7 @@ test('invalid settings are rejected, not silently defaulted', () => {
   assert.throws(() => validateTiers([{ ...tiers[0], name: 'common' }]));
   assert.throws(() => validateTiers([tiers[1], tiers[0]]));
 });
-test('unknown frequency never earns rare points', () => {
+test('unknown frequency earns no rare points with missing-data scoring off', () => {
   const result = scoreNFT(nft('not returned'), counts, 100, config);
   assert.equal(result.totalScore, 0); assert.equal(result.scoringMethod, 'Unscored');
   assert.equal(result.mainTraits[0].status, 'unknown'); assert.equal(result.coverage, 0);
@@ -37,10 +37,11 @@ test('invalid counts and invalid population are unscored', () => {
   }
   for (const supply of [0, -1, NaN, 1.5]) assert.equal(scoreNFT(nft(), counts, supply, config).scoringMethod, 'Unscored');
 });
-test('numeric min/max and underscore traits are excluded', () => {
+test('numeric min/max are not treated as empirical value frequencies', () => {
   assert.deepEqual([...buildTraitTypes(counts)], ['Color']);
   const result = scoreNFT(nft('gold', { traits: [{ type: 'Level', value: '7', numeric: true }, { type: '_internal', value: 'x' }] }), counts, 100, config);
-  assert.equal(result.totalScore, 0); assert.equal(result.mainTraits[0].status, 'excluded');
+  assert.equal(result.totalScore, 0); assert.equal(result.mainTraits[0].status, 'unknown');
+  assert.equal(result.specialTraits[0].status, 'unknown');
 });
 test('duplicate traits cannot increase score or occurrence counts', () => {
   const item = nft(); item.traits.push({ ...item.traits[0] });
@@ -53,18 +54,107 @@ test('structured trait keys do not collide on delimiters', () => {
   const c = countTraits([nft('x', { traits: [{ type: 'a::b', value: 'c||d' }] })]);
   assert.deepEqual([...buildTraitTypes(c)], ['a::b']);
 });
-test('missing scoring requires complete per-token presence', () => {
+test('measured missing scores use complete per-token presence; otherwise opt-in assumptions', () => {
   const items = Array.from({ length: 100 }, (_, i) => nft('gold', { tokenId: String(i), traits: i === 0 ? [] : [{ type: 'Color', value: 'gold' }] }));
   const full = countTraits(items, 100);
   assert.equal(buildMissingCountByType(full, 100).Color, 1);
   assert.equal(scoreNFT(items[0], full, 100, { ...config, scoreMissing: true }).totalScore, 11);
   assert.equal(scoreNFT(items[0], full, 100, { ...config, scoreMissing: true, missingBonus: 0 }).totalScore, 0);
-  assert.equal(scoreNFT(items[0], counts, 100, { ...config, scoreMissing: true }).totalScore, 0);
+  const assumed = scoreNFT(items[0], counts, 100, { ...config, scoreMissing: true });
+  assert.equal(assumed.totalScore, 11); assert.equal(assumed.mainTraits[0].status, 'assumed');
 });
-test('omitted NFT metadata is not evidence of missing traits', () => {
+test('omitted NFT metadata may earn opt-in assumed points, never measured rarity', () => {
   const items = Array.from({ length: 100 }, (_, i) => nft('gold', { tokenId: String(i), traits: i ? [{ type: 'Color', value: 'gold' }] : [] }));
   const result = scoreNFT(nft('gold', { traits: [], traitsKnown: false, metadataUnavailable: true }), countTraits(items), 100, { ...config, scoreMissing: true });
-  assert.equal(result.totalScore, 0); assert.equal(result.scoringMethod, 'Unscored'); assert.equal(result.coverage, 0);
+  assert.equal(result.totalScore, 11); assert.equal(result.mainTraits[0].status, 'assumed'); assert.equal(result.coverage, 0);
+  assert.equal(result.mainTraits[0].pct, 'N/A'); assert.equal(result.mainTraits[0].count, null);
+});
+
+test('checkbox opt-in restores rare points for unavailable observed frequencies', () => {
+  const item = nft('not returned');
+  const assumed = scoreNFT(item, counts, 100, { ...config, scoreMissing: true });
+  assert.equal(assumed.totalScore, 7); assert.equal(assumed.assumedPoints, 7);
+  assert.equal(assumed.mainTraits[0].status, 'assumed'); assert.equal(assumed.mainTraits[0].pct, 'N/A');
+  assert.equal(assumed.coverage, 0);
+  assert.equal(scoreNFT(item, counts, 100, config).totalScore, 0);
+  assert.equal(scoreNFT(item, counts, 100, { ...config, scoreMissing: true, weights: { Color: 0 } }).totalScore, 0);
+  assert.equal(scoreNFT(item, counts, 0, { ...config, scoreMissing: true }).totalScore, 0);
+});
+
+test('assumptions respect custom tiers and an empty zero-percent first band', () => {
+  const item = nft('not returned');
+  const custom = [{ name: 'Empty', threshold: 0, points: 99 }, { name: 'Rare', threshold: 5, points: 4 }];
+  const result = scoreNFT(item, counts, 100, { ...config, tiers: custom, scoreMissing: true });
+  assert.equal(result.totalScore, 4); assert.equal(result.mainTraits[0].tier, 'Rare');
+  const disabled = scoreNFT(item, counts, 100, { ...config, tiers: [{ name: 'Off', threshold: 0, points: 7 }], scoreMissing: true });
+  assert.equal(disabled.totalScore, 0);
+});
+
+test('known special traits restore original score and remain separately visible', () => {
+  const c = parseTraitCounts({ categories: { _type: 'string' }, counts: { _type: { rare: 1 } } }, 100);
+  const result = scoreNFT(nft('gold', { traits: [{ type: '_type', value: 'rare' }] }), c, 100, config);
+  assert.equal(result.totalScore, 7); assert.equal(result.specialTraits[0].points, 7); assert.equal(result.mainTraits.length, 0);
+  assert.equal(scoreNFT(nft('gold', { traits: [] }), c, 100, { ...config, scoreMissing: true }).totalScore, 0);
+});
+
+test('complete numeric distributions restore exact-value scoring without reading ranges', () => {
+  const items = Array.from({ length: 100 }, (_, i) => nft('gold', { tokenId: String(i), traits: [{ type: 'Generation', value: i ? '1' : '2', numeric: true }] }));
+  const c = countTraits(items);
+  assert.equal(scoreNFT(items[0], c, 100, config).totalScore, 7);
+  assert.equal(scoreNFT(items[1], c, 100, config).totalScore, 0);
+  const range = parseTraitCounts({ categories: { Generation: 'number' }, counts: { Generation: { min: 1, max: 2 } } }, 100);
+  assert.equal(scoreNFT(items[0], range, 100, config).totalScore, 0);
+  assert.equal(scoreNFT(items[0], countTraits(items.slice(0, 1), 100), 100, config).totalScore, 0);
+});
+
+test('full scans supplement missing types without changing existing API distributions', () => {
+  const items = Array.from({ length: 100 }, (_, i) => nft(i < 2 ? 'gold' : 'grey', { tokenId: String(i), traits: [{ type: 'Color', value: i < 2 ? 'gold' : 'grey' }, { type: 'Generation', value: i ? '1' : '2', numeric: true }] }));
+  const merged = supplementTraitCounts(counts, countTraits(items), 100);
+  assert.equal(merged[traitKey('Color', 'gold')], 1); // scan says 2; API precedence is stable
+  assert.equal(merged[traitKey('Generation', '2')], 1);
+  assert.equal(scoreNFT(items[0], merged, 100, config).totalScore, 14);
+  assert.equal(merged._meta.present.Color, 100);
+  assert.match(merged._meta.source, /full-scan additional/);
+  assert.equal(supplementTraitCounts(counts, countTraits(items.slice(0, 2), 100), 100), counts);
+  assert.equal(supplementTraitCounts(counts, countTraits(items), 99), counts);
+  assert.equal(needsTraitScan(items, counts), true);
+  assert.equal(needsTraitScan([nft()], counts), false);
+});
+
+test('a missing value in an existing API type is not silently spliced in from another source', () => {
+  const item = nft('not returned');
+  const scanned = countTraits(Array.from({ length: 100 }, (_, i) => ({ ...item, tokenId: String(i) })));
+  const merged = supplementTraitCounts(counts, scanned, 100);
+  assert.equal(merged[traitKey('Color', 'not returned')], undefined);
+  assert.equal(scoreNFT(item, merged, 100, config).scoringMethod, 'Unscored');
+  assert.equal(scoreNFT(item, merged, 100, { ...config, scoreMissing: true }).assumedPoints, 7);
+});
+
+test('multi-valued presence is per NFT, not a sum that invents zero-percent absence', () => {
+  const items = Array.from({ length: 100 }, (_, i) => nft('gold', { tokenId: String(i), traits: i < 20 ? [] : [{ type: 'Color', value: 'gold' }, { type: 'Color', value: 'grey' }] }));
+  const c = countTraits(items);
+  const result = scoreNFT(items[0], c, 100, { ...config, scoreMissing: true });
+  assert.equal(result.totalScore, 0); assert.equal(result.mainTraits[0].pct, '20.00'); assert.equal(result.mainTraits[0].status, 'known');
+});
+
+test('a complete scan with zero occurrences proves common absence, not assumed rarity', () => {
+  const items = Array.from({ length: 100 }, (_, i) => nft('gold', { tokenId: String(i), traits: [] }));
+  const c = supplementTraitCounts(counts, countTraits(items), 100);
+  assert.equal(buildMissingCountByType(c, 100).Color, 100);
+  const result = scoreNFT(items[0], c, 100, { ...config, scoreMissing: true });
+  assert.equal(result.totalScore, 0); assert.equal(result.assumedTraits, 0);
+  assert.equal(result.mainTraits[0].pct, '100.00'); assert.equal(result.mainTraits[0].status, 'known');
+});
+
+test('optional metadata enrichment preserves known traits and their baseline', () => {
+  const original = nft('gold', { name: 'Original', image: 'https://example.com/nft.png', rarity: { rank: 1 } });
+  for (const detail of [{}, { traits: [] }, { traits: [{ trait_type: 'Color', value: 'changed' }] }]) {
+    const enriched = normalizeNFT({ identifier: '0', contract: '0xabc', ...detail }, original);
+    assert.deepEqual(enriched.traits, original.traits); assert.equal(enriched.traitsKnown, true);
+    assert.equal(scoreNFT(enriched, counts, 100, config).totalScore, 7);
+  }
+  const repaired = normalizeNFT({ identifier: '0', traits: [{ trait_type: 'Color', value: 'gold' }] }, { ...original, traits: [], traitsKnown: false, metadataUnavailable: true });
+  assert.equal(repaired.traitsKnown, true); assert.equal(repaired.metadataUnavailable, false);
 });
 test('subset pair counts never masquerade as collection frequencies', () => {
   const item = nft('gold', { traits: [{ type: 'Color', value: 'gold' }, { type: 'Shape', value: 'star' }] });
@@ -78,6 +168,23 @@ test('full pair scores obey zero weights and deduplicate tokens', () => {
   assert.equal(pairs._meta.population, 100);
   assert.equal(scoreNFT(items[0], c, 100, { ...config, scorePairs: true }, pairs).pairScores.length, 1);
   assert.equal(scoreNFT(items[0], c, 100, { ...config, scorePairs: true, weights: new Map([['Color', 0]]) }, pairs).pairScores.length, 0);
+});
+
+test('original pair multiplier is independent of positive weights and stays capped at three', () => {
+  const items = Array.from({ length: 100 }, (_, i) => nft('gold', { tokenId: String(i), traits: ['Hat', 'Eyes', 'Shape', 'Level'].map(type => ({ type, value: i ? 'common' : 'rare', numeric: type === 'Level' })) }));
+  const c = countTraits(items), pairs = buildPairCounts(items);
+  for (const weight of [0.25, 1, 2]) {
+    const result = scoreNFT(items[0], c, 100, { ...config, scorePairs: true, weights: { Hat: weight } }, pairs);
+    assert.equal(result.pairScores.length, 3); assert.ok(result.pairScores.every(p => p.points === 14));
+    assert.equal(result.totalScore, Math.round(7 * weight) + 21 + 42);
+  }
+  const disabled = scoreNFT(items[0], c, 100, { ...config, scorePairs: true, weights: { Hat: 0 } }, pairs);
+  assert.equal(disabled.pairScores.length, 3); assert.ok(disabled.pairScores.every(p => p.a.type !== 'Hat' && p.b.type !== 'Hat'));
+});
+
+test('assumed rarity cannot qualify for a measured high-score lower-price flag', () => {
+  const items = [1, 2, 3].map((price, i) => scoreNFT(nft('not returned', { tokenId: String(i), price, currency: 'ETH' }), counts, 100, { ...config, scoreMissing: true }));
+  addValueMetrics(items); assert.ok(items.every(i => !i.isBargain && i.coverage === 0));
 });
 test('atomic price conversion handles zero and large decimals', () => {
   assert.equal(parsePrice(price('420', 0)), 420);

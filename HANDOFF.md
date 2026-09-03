@@ -1,30 +1,23 @@
-# v1.1.1 release handoff
+# v1.2.0 scoring correction handoff
 
 ## Scope
-Focused correctness, API, privacy and usability improvements, retaining the existing vanilla/static architecture and GitHub Pages hosting.
+Correct the scoring-policy regressions introduced in v1.1.1, retaining the existing vanilla/static architecture, privacy/startup fixes and GitHub Pages hosting. The user explicitly requested that checked missing-data scoring award rare points.
 
 ## Changes
-- Startup now shows a loading/error state, waits for handlers before enabling interaction, and pins runtime asset requests to release 1.1.1. Handler registration precedes saved-setting restoration.
-- Extracted deterministic scoring, API, configuration and storage modules.
-- Corrected zero-value handling, numeric trait ranges, unknown trait scoring, duplicate traits and NFT identities.
-- Full-collection baselines for missing/pair bonuses; no listed/wallet subset masquerades as collection-wide frequencies.
-- Removed OpenSea-rank-to-tier fallback in Portfolio; results grouped by collection.
-- Currency-aware listings, sorting/filtering, floors and score/price labels. Unsupported bundles and quantity offers are skipped.
-- Modern NFT metadata batch endpoint, canonical account resolver, header-aware retries and cancellation.
-- Optional enrichment/price failure no longer discards valid All-mode scores.
-- Session-first key storage with explicit persistence; removed blocked third-party analytics.
-- Synthetic no-key demo, methodology and provenance.
-- Settings validation, atomic JSON import, share-link weights, snapshot compatibility.
-- Input labels, tab semantics/keyboard navigation, expandable table buttons, progress/error announcements, mobile wrapping and larger controls.
-- Node unit and DOM integration tests, locked dev dependency, read-only CI.
+- Original 7/3/1 tiers and exclusive boundaries are unchanged.
+- Restored known special traits, exact numeric frequencies from complete scans, and the original independent pair multiplier. Zero weights still disable contributions/pairs.
+- Preserve available API frequency distributions across Listed, All and Compare; complete scans supplement missing whole types and provide measured presence/pairs.
+- Missing-data checkbox now explicitly permits assumed rarity. Default unavailable present value: 7 points; assumed absent main type: 11 points. Measured absence uses its actual frequency. Unchecked: no points for missing/unavailable data.
+- Assumptions show N/A frequency/null count, reduce measured coverage, do not qualify for high-score/lower-price flags, and are identified in cards, table, Compare, provenance and CSV. Portfolio respects the checkbox.
+- Optional owner/rank enrichment preserves already-known traits within a run. Optional scan failures retain available base scores; cancellation still stops.
+- Expanded scoring and integration tests. Runtime assets and engine version now 1.2.0; incompatible old snapshots remain separate.
 
 ## Verification
-Local verification on 2026-09-04: 53 unit/DOM integration tests passed, including module-load failure and startup gating; syntax and whitespace checks passed. npm reported zero dependency vulnerabilities after installation.
+Local verification on 2026-09-04: all 70 tests passed; syntax checks passed. The suite covers restored scoring, opt-in assumptions and checkbox re-scoring, measured multi-valued/zero-present absence, mode consistency, enrichment protection, optional failures, numeric scans, zero settings, keys, startup and prior API cases. Independent review also ran 2,000 deterministic original-vs-current comparisons on complete distributions with positive weights and pair bonuses; totals matched.
 
-Real-browser verification: fresh initialization, light/dark switch, Compare and Portfolio clicks, arrow-key tab navigation, no-key demo, table view and row expansion. Layouts at 320px, 390px and 1280px had no document-level horizontal overflow. No console errors were observed.
-Authenticated Listed/All/Compare/Portfolio data requests and batch CORS remain a real-key smoke-test follow-up. Keys were not extracted from the user's browser or added to files.
+Historical v1.1.1 real-browser checks covered fresh initialization, theme, tabs, keyboard, demo, table and responsive layouts. This scoring correction is validated with deterministic and DOM integration tests, not a new authenticated browser run. Authenticated Listed/All/Compare/Portfolio requests and batch CORS remain a real-key smoke-test follow-up. Keys were not extracted or added to files.
 
-The user authorized full deployment of this release to the existing GitHub Pages master root. Publish all .js/.css assets with index.html; .nojekyll keeps delivery static. Do not change repository visibility or hosting.
+This is a correction to the user's fully deployed website. Publish every runtime asset together to the existing GitHub Pages master root; .nojekyll keeps delivery static. Repository visibility and hosting remain unchanged.
 
 ## Deliberate limits
 - Ethereum-only Portfolio, cap 10,000 NFTs and top 25 collections, explicitly labelled.
@@ -32,6 +25,8 @@ The user authorized full deployment of this release to the existing GitHub Pages
 - Unidentified payment-token prices are display-only and excluded from value/floor comparisons.
 - Rate-limit coordination is within one tab, not cross-tab.
 - Full scans are not atomic API snapshots; data can change mid-scan.
+- A value missing within an existing API category is left unavailable/assumed, not spliced into that category from another source.
+- Numeric-only Portfolio frequencies are not full-scanned per collection; the checkbox can opt into assumed points instead.
 - Existing inline event handlers remain supported through a window compatibility bridge. CSP still includes unsafe-inline for scripts/styles.
 - Browser-local settings and snapshots share this GitHub Pages origin with other projects.
 - Licensing and repository visibility are unchanged.

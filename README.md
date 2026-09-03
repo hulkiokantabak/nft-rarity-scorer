@@ -31,11 +31,20 @@ Open the local address printed by the server. Native JavaScript modules require 
 
 This is a **custom weighted trait-tier heuristic**, not OpenRarity, a valuation, or an investment recommendation.
 
-For a known categorical trait, frequency is count / collection supply. Thresholds are exclusive: with thresholds 2%, 5%, 20%, a trait at exactly 2% belongs to the second band. Contribution is rounded tier points × trait weight. Zero points, weights, and multipliers are valid.
+For a known trait, frequency is count / collection supply. The original default remains 7/3/1 points below 2%/5%/20%. Thresholds are exclusive: a trait at exactly 2% belongs to the second band. Contribution is rounded tier points × trait weight. Zero points, weights, and multipliers are valid.
 
-Numeric ranges and internal underscore-prefixed traits are excluded. Missing or invalid frequencies do not become rare traits; they contribute no points and are labelled unavailable. Unscored NFTs are distinct from known common NFTs that legitimately score zero.
+Underscore-prefixed special traits contribute again. Numeric values contribute when a complete collection scan establishes exact frequencies; API min/max ranges are never interpreted as counts. Available OpenSea frequency distributions take precedence in Listed, All and Compare. A complete scan supplements missing whole trait types, without changing the existing distributions or splicing individual values into them. If an API category omits a particular value, it remains unavailable (or assumed with the checkbox), even after a scan.
 
-Missing and pair bonuses require complete per-token metadata for the entire collection. Selecting either can trigger a full scan even in Listed mode. A cached re-score cannot invent that baseline: rerun analysis with the option selected if needed. At most three rarest eligible pairs contribute; each uses the lower weight of its two traits. Portfolio omits these bonuses because holdings are not a full collection population.
+**Score missing traits / unavailable data** is an explicit opt-in, off by default. When checked:
+
+- An absent main trait uses measured absence frequency when a complete per-token scan exists, multiplied by the missing bonus.
+- Otherwise, absent traits receive the rarest nonempty band's points × trait weight × missing bonus; missing individual frequencies receive that band's points × trait weight. Default examples: 11 points for an assumed absent type, 7 for an unavailable present value.
+- These contributions say **Assumed rare**, retain `N/A` frequency and null count, and are excluded from measured coverage. Missing metadata can receive these points only for known collection trait types; no imaginary types are created.
+- A zero-percent band remains empty/disabled. Known common absence remains common, not automatically rare.
+
+Unchecked: absent traits and unavailable frequencies receive no points. Toggling the checkbox re-scores cached Analyze results immediately. Portfolio respects the opt-in too; it does not pretend wallet holdings establish measured collection absence. CSV exports identify assumed contributions and points separately.
+
+Missing-frequency measurement, numeric restoration and pair scoring can require a full scan, including in Listed/Compare. Optional scan failure preserves available base scores. Pair bonuses still require a complete collection population. At most three rarest eligible cross-type pairs contribute using their own multiplier (default 2), independent of positive single-trait weights. A zero trait weight disables its pairs. Special traits do not receive missing/pair bonuses. Portfolio omits pair bonuses.
 
 Scores depend on each collection's trait structure. Portfolio results are grouped by collection. OpenSea ranks remain separate metadata and are never converted to fallback trait points.
 
@@ -70,4 +79,6 @@ Repository visibility, licensing, and hosting have not been changed by this upgr
 
 ## Verification limits
 
-The 53-test regression suite uses synthetic fixtures and a non-browser DOM. Release 1.1.1 additionally received real-browser checks for fresh startup, theme switching, tabs, keyboard navigation, demo results, table expansion, and 320px/390px/1280px layouts. Browser CORS and authenticated OpenSea availability still require a real-key smoke test on a small collection; no real API key is present in the repository or fixtures.
+The regression suite uses synthetic fixtures and a non-browser DOM. Release 1.2.0 adds original-scoring parity cases, stable base frequencies across modes, exact numeric/special traits, optional-enrichment protection, and checkbox on/off assumption checks. Release 1.1.1 received real-browser startup, theme, tabs, keyboard, demo, table and responsive checks; those historical checks are not a claim of live authenticated scoring validation for this release. Browser CORS and authenticated OpenSea availability still require a real-key smoke test on a small collection; no real API key is present in the repository or fixtures.
+
+See [Scoring review](SCORING_REVIEW.md) for the before/after analysis and deliberate policy choices.

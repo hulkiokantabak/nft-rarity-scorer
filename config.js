@@ -1,4 +1,4 @@
-import { numberSetting, validateTiers } from './core.js?v=1.1.1';
+import { numberSetting, validateTiers } from './core.js?v=1.2.0';
 
 export function validateConfig(config) {
   if (!config || typeof config !== 'object' || Array.isArray(config) || ![1, 2].includes(config.v)) throw new Error('Unsupported config version. Expected v1 or v2.');

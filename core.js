@@ -1,5 +1,5 @@
 // Deterministic, DOM-free scoring. This is a custom heuristic, not OpenRarity.
-export const ENGINE_VERSION = '1.1.0';
+export const ENGINE_VERSION = '1.2.0';
 export const traitKey = (type, value) => JSON.stringify([String(type), String(value)]);
 const pairKey = (a, b) => JSON.stringify([a, b].sort());
 const validCount = (n, supply) => Number.isInteger(n) && n > 0 && n <= supply;
@@ -34,35 +34,54 @@ function withMeta(counts, meta) {
 
 export function parseTraitCounts(data, supply) {
   const counts = Object.create(null);
-  const excluded = new Set();
   for (const [type, values] of Object.entries(data?.counts || {})) {
     // API numeric categories contain min/max, not frequency distributions.
-    if (data?.categories?.[type] !== 'string' || type.startsWith('_')) { excluded.add(type); continue; }
+    if (data?.categories?.[type] !== 'string') continue;
     if (!values || typeof values !== 'object' || Array.isArray(values)) continue;
     for (const [value, n] of Object.entries(values)) {
       if (validCount(n, supply)) counts[traitKey(type, value)] = n;
     }
   }
-  return withMeta(counts, { source: 'OpenSea categorical frequencies', excluded: [...excluded], population: supply, complete: true });
+  return withMeta(counts, { source: 'OpenSea categorical frequencies', population: supply, complete: true });
 }
 
 export function countTraits(items, supply = items.length) {
   const counts = Object.create(null);
   const present = Object.create(null);
-  const excluded = new Set();
   const unique = [...new Map(items.map(i => [itemKey(i), i])).values()];
   for (const item of unique) {
     const seenTypes = new Set();
     for (const t of uniqueTraits(item.traits)) {
-      if (t.type.startsWith('_') || t.numeric) { excluded.add(t.type); continue; }
       const key = traitKey(t.type, t.value);
       counts[key] = (counts[key] ?? 0) + 1;
       seenTypes.add(t.type);
     }
     for (const type of seenTypes) present[type] = (present[type] ?? 0) + 1;
   }
-  const complete = unique.length === supply && unique.every(i => i.traitsKnown !== false);
-  return withMeta(counts, { source: 'Full NFT metadata scan', excluded: [...excluded], population: unique.length, complete, present });
+  const complete = unique.length === supply && unique.every(i => i.traitsKnown !== false && !i.metadataUnavailable);
+  return withMeta(counts, { source: 'Full NFT metadata scan', population: unique.length, complete, present });
+}
+
+// Keep existing API distributions stable across modes. A full scan supplies
+// otherwise unavailable types (including exact numeric values), never a few
+// individual values spliced into an existing distribution.
+export function supplementTraitCounts(primary, scanned, supply) {
+  if (!scanned?._meta?.complete || scanned._meta.population !== supply) return primary;
+  if (!Object.keys(primary).length) return scanned;
+  const counts = Object.assign(Object.create(null), primary);
+  const primaryTypes = buildTraitTypes(primary);
+  let supplemented = false;
+  for (const [key, count] of Object.entries(scanned)) if (!primaryTypes.has(JSON.parse(key)[0])) {
+    counts[key] = count; supplemented = true;
+  }
+  return withMeta(counts, { ...primary._meta, population: supply, complete: true, present: scanned._meta.present,
+    source: supplemented ? 'OpenSea frequencies + full-scan additional trait types' : primary._meta.source,
+    presenceSource: 'Full NFT metadata scan' });
+}
+
+export function needsTraitScan(items, counts) {
+  const types = buildTraitTypes(counts);
+  return items.some(item => item.traitsKnown !== false && (item.traits || []).some(t => !types.has(t.type)));
 }
 
 const typesCache = new WeakMap(), missingCache = new WeakMap();
@@ -78,7 +97,10 @@ export function buildMissingCountByType(counts, supply) {
   // Value counts cannot establish absence for multi-valued trait types.
   // Only a complete metadata scan has trustworthy per-token presence counts.
   if (!counts._meta?.complete || !counts._meta?.present) return missing;
-  for (const [type, n] of Object.entries(counts._meta.present)) if (n <= supply) missing[type] = supply - n;
+  for (const type of buildTraitTypes(counts)) {
+    const n = counts._meta.present[type] ?? 0;
+    if (Number.isInteger(n) && n >= 0 && n <= supply) missing[type] = supply - n;
+  }
   missingCache.set(counts, { supply, missing });
   return missing;
 }
@@ -87,14 +109,14 @@ export function buildPairCounts(items, supply = items.length) {
   const unique = [...new Map(items.map(i => [itemKey(i), i])).values()];
   const counts = Object.create(null);
   for (const item of unique) {
-    const traits = uniqueTraits(item.traits).filter(t => !t.type.startsWith('_') && !t.numeric);
+    const traits = uniqueTraits(item.traits).filter(t => !t.type.startsWith('_'));
     for (let i = 0; i < traits.length; i++) for (let j = i + 1; j < traits.length; j++) {
       if (traits[i].type === traits[j].type) continue;
       const k = pairKey(traitKey(traits[i].type, traits[i].value), traitKey(traits[j].type, traits[j].value));
       counts[k] = (counts[k] ?? 0) + 1;
     }
   }
-  return withMeta(counts, { population: unique.length, complete: unique.length === supply && unique.every(i => i.traitsKnown !== false) });
+  return withMeta(counts, { population: unique.length, complete: unique.length === supply && unique.every(i => i.traitsKnown !== false && !i.metadataUnavailable) });
 }
 
 export function classifyTrait(pct, tiers) {
@@ -107,25 +129,26 @@ export function scoreNFT(item, counts, supply, config, pairCounts) {
   const weights = config.weights instanceof Map ? config.weights : new Map(Object.entries(config.weights || {}));
   const traits = uniqueTraits(item.traits);
   const metadataKnown = item.traitsKnown !== false && !item.metadataUnavailable;
-  const excluded = new Set(counts._meta?.excluded || []);
-  for (const t of traits) if (t.numeric) excluded.add(t.type);
   const traitScores = [];
   const score = (type, value, count, bonus = 1, isMissing = false) => {
-    const excludedTrait = type.startsWith('_') || excluded.has(type);
-    const known = metadataKnown && Number.isInteger(supply) && supply > 0 && !excludedTrait && validCount(count, supply) && counts._meta?.complete !== false;
+    const validSupply = Number.isInteger(supply) && supply > 0;
+    const known = metadataKnown && validSupply && validCount(count, supply) && counts._meta?.complete !== false;
+    // Explicit opt-in: unavailable data may receive the rarest nonempty band,
+    // but must never be represented as a measured 0% frequency.
+    const assumed = !known && validSupply && config.scoreMissing === true;
     const pct = known ? count / supply * 100 : null;
-    const { tier, pts } = known ? classifyTrait(pct, tiers) : { tier: excludedTrait ? 'excluded' : 'unknown', pts: 0 };
+    const { tier, pts } = known || assumed ? classifyTrait(known ? pct : 0, tiers) : { tier: 'unknown', pts: 0 };
     const weight = numberSetting(weights.get(type), 1, 0, 10);
-    traitScores.push({ type, value, count: known ? count : null, pct: known ? pct.toFixed(2) : 'N/A', tier, points: Math.round(pts * weight * bonus), status: known ? 'known' : excludedTrait ? 'excluded' : 'unknown', isMissing });
+    traitScores.push({ type, value, count: known ? count : null, pct: known ? pct.toFixed(2) : 'N/A', tier, points: Math.round(pts * weight * bonus), status: known ? 'known' : assumed ? 'assumed' : 'unknown', isMissing });
   };
-  for (const t of traits) score(t.type, t.value, t.numeric ? undefined : counts[traitKey(t.type, t.value)]);
+  for (const t of traits) score(t.type, t.value, counts[traitKey(t.type, t.value)]);
   const missingCounts = buildMissingCountByType(counts, supply);
-  if (config.scoreMissing && metadataKnown) for (const type of buildTraitTypes(counts)) {
-    if (!traits.some(t => t.type === type)) score(type, '[None]', missingCounts[type], numberSetting(config.missingBonus, 1.5, 0, 10), true);
+  if (config.scoreMissing) for (const type of buildTraitTypes(counts)) {
+    if (!type.startsWith('_') && !traits.some(t => t.type === type)) score(type, '[None]', missingCounts[type], numberSetting(config.missingBonus, 1.5, 0, 10), true);
   }
   let pairScores = [];
   if (config.scorePairs && metadataKnown && pairCounts?._meta?.complete && pairCounts._meta.population === supply) {
-    const eligible = traits.filter(t => !t.type.startsWith('_') && !excluded.has(t.type) && !t.numeric && validCount(counts[traitKey(t.type, t.value)], supply));
+    const eligible = traits.filter(t => !t.type.startsWith('_') && numberSetting(weights.get(t.type), 1, 0, 10) > 0 && validCount(counts[traitKey(t.type, t.value)], supply));
     for (let i = 0; i < eligible.length; i++) for (let j = i + 1; j < eligible.length; j++) {
       const a = eligible[i], b = eligible[j];
       if (a.type === b.type) continue;
@@ -133,8 +156,9 @@ export function scoreNFT(item, counts, supply, config, pairCounts) {
       if (!validCount(count, supply)) continue;
       const pct = count / supply * 100;
       const { tier, pts } = classifyTrait(pct, tiers);
-      const weight = Math.min(numberSetting(weights.get(a.type), 1, 0, 10), numberSetting(weights.get(b.type), 1, 0, 10));
-      const points = Math.round(pts * numberSetting(config.comboBonus, 2, 0, 10) * weight);
+      // Restore the original independent pair multiplier. A zero trait weight
+      // still disables its pairs; positive weights apply to single traits only.
+      const points = Math.round(pts * numberSetting(config.comboBonus, 2, 0, 10));
       if (points > 0) pairScores.push({ a, b, count, pct, tier, points });
     }
     pairScores.sort((a, b) => a.pct - b.pct || traitKey(a.a.type, a.a.value).localeCompare(traitKey(b.a.type, b.a.value)));
@@ -142,14 +166,18 @@ export function scoreNFT(item, counts, supply, config, pairCounts) {
   }
   const tierCounts = Object.fromEntries(tiers.map(t => [t.name, 0]));
   for (const t of [...traitScores, ...pairScores]) if (Object.hasOwn(tierCounts, t.tier)) tierCounts[t.tier]++;
-  const eligible = traitScores.filter(t => t.status !== 'excluded');
-  const known = eligible.filter(t => t.status === 'known').length;
+  const known = traitScores.filter(t => t.status === 'known').length;
+  const assumed = traitScores.filter(t => t.status === 'assumed').length;
   return { ...item, rarityRank: item.rarity?.rank, totalSupply: supply,
     totalScore: traitScores.reduce((n, t) => n + t.points, 0) + pairScores.reduce((n, t) => n + t.points, 0),
-    tierCounts, mainTraits: traitScores.filter(t => !t.type.startsWith('_')), specialTraits: [], pairScores,
-    scoringMethod: known ? 'Custom tiers' : 'Unscored', coverage: metadataKnown && eligible.length ? known / eligible.length : 0,
-    unknownTraits: eligible.length - known, missingAvailable: !!counts._meta?.present && counts._meta.complete,
-    pairsAvailable: !!pairCounts?._meta?.complete, source: counts._meta?.source || 'Unknown frequencies' };
+    tierCounts, mainTraits: traitScores.filter(t => !t.type.startsWith('_')), specialTraits: traitScores.filter(t => t.type.startsWith('_')), pairScores,
+    scoringMethod: known || assumed ? 'Custom tiers' : 'Unscored', coverage: metadataKnown && traitScores.length ? known / traitScores.length : 0,
+    assumedTraits: assumed, assumedPoints: traitScores.filter(t => t.status === 'assumed').reduce((n, t) => n + t.points, 0),
+    unknownTraits: traitScores.length - known, missingAvailable: !!counts._meta?.present && counts._meta.complete,
+    pairsAvailable: !!pairCounts?._meta?.complete && pairCounts._meta.population === supply,
+    source: [counts._meta?.source || 'Unknown frequencies',
+      ...(config.scoreMissing && counts._meta?.presenceSource ? ['Missing frequencies: full metadata scan'] : []),
+      ...(config.scorePairs && pairCounts?._meta?.complete && pairCounts._meta.population === supply ? ['Pairs: full metadata scan'] : [])].join('; ') };
 }
 
 export function itemKey(item) {
@@ -187,10 +215,15 @@ export function listingAsset(listing, fallbackChain = null) {
 }
 
 export function normalizeNFT(nft, context = {}) {
-  return { ...context, tokenId: String(nft.identifier), name: nft.name || `#${nft.identifier}`, image: nft.image_url || nft.display_image_url || '',
+  // Owner/rank enrichment must not erase or change a known trait population
+  // halfway through a run. Missing traits can still be filled by a later batch.
+  const keepTraits = Array.isArray(context.traits) && context.traitsKnown !== false && !context.metadataUnavailable;
+  const traitsKnown = keepTraits || Array.isArray(nft.traits);
+  const traits = keepTraits ? context.traits : (Array.isArray(nft.traits) ? nft.traits : []).map(t => ({ type: String(t.trait_type), value: String(t.value), numeric: typeof t.value === 'number' || ['number', 'boost_number', 'boost_percentage', 'date'].includes(t.display_type) }));
+  return { ...context, tokenId: String(nft.identifier), name: nft.name || context.name || `#${nft.identifier}`, image: nft.image_url || nft.display_image_url || context.image || '',
     contractAddress: nft.contract || context.contractAddress, chain: nft.chain || context.chain,
-    price: context.price ?? null, currency: context.currency ?? null, rarity: nft.rarity, owner: nft.owners?.[0]?.address || context.owner || null,
-    traitsKnown: Array.isArray(nft.traits), traits: (nft.traits || []).map(t => ({ type: String(t.trait_type), value: String(t.value), numeric: typeof t.value === 'number' || ['number', 'boost_number', 'boost_percentage', 'date'].includes(t.display_type) })) };
+    price: context.price ?? null, currency: context.currency ?? null, rarity: nft.rarity || context.rarity, owner: nft.owners?.[0]?.address || context.owner || null,
+    traitsKnown, traits, metadataUnavailable: !traitsKnown };
 }
 
 // Midrank percentile is tie-aware and only describes the fetched, same-method cohort.

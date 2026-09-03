@@ -1,7 +1,7 @@
-import { ENGINE_VERSION, numberSetting, validateTiers, traitKey, parseTraitCounts, countTraits, buildTraitTypes, buildMissingCountByType, buildPairCounts, classifyTrait as classifyCore, scoreNFT, itemKey, listingAsset, normalizeNFT, addValueMetrics, configFingerprint } from './core.js?v=1.1.1';
-import { createApiClient, abortableDelay, nextPage, fetchNFTBatches } from './api.js?v=1.1.1';
-import { createKeyStore } from './storage.js?v=1.1.1';
-import { validateConfig } from './config.js?v=1.1.1';
+import { ENGINE_VERSION, numberSetting, validateTiers, traitKey, parseTraitCounts, countTraits, supplementTraitCounts, needsTraitScan, buildTraitTypes, buildMissingCountByType, buildPairCounts, classifyTrait as classifyCore, scoreNFT, itemKey, listingAsset, normalizeNFT, addValueMetrics, configFingerprint } from './core.js?v=1.2.0';
+import { createApiClient, abortableDelay, nextPage, fetchNFTBatches } from './api.js?v=1.2.0';
+import { createKeyStore } from './storage.js?v=1.2.0';
+import { validateConfig } from './config.js?v=1.2.0';
 let resultConfig = null;
 let resultMode = 'listed';
 let runMode = 'listed';
@@ -475,32 +475,21 @@ async function analyze() {
     let traitCounts;
     try { traitCounts = parseTraitCounts(await apiGet(`/api/v2/traits/${encodeURIComponent(slug)}`, apiKey), totalSupply); }
     catch (e) { if (e.name === 'AbortError') throw e; warn('Trait endpoint unavailable; using a full metadata scan.'); traitCounts = {}; }
-    // Missing and combination frequencies require a full population, not a listed subset.
-    let baseline = null;
-    if (mode === 'all' || !Object.keys(traitCounts).length || runConfig.scoreMissing || runConfig.scorePairs) {
-      baseline = await fetchAllItems(slug, apiKey, totalSupply);
-      if (baseline.some(i => !i.traitsKnown)) await enrichItems(baseline, chain, contractAddress, apiKey);
-      const fullCounts = countTraits(baseline, totalSupply);
-      if (fullCounts._meta.complete) traitCounts = fullCounts;
-      else {
-        warn(`Metadata scan returned ${baseline.length}/${totalSupply} NFTs or incomplete traits. Missing/pair bonuses are unavailable.`);
-        if (!Object.keys(traitCounts).length) traitCounts = fullCounts;
-      }
-    }
-    let items;
+    const items = mode === 'all' ? await fetchAllItems(slug, apiKey, totalSupply) : await fetchListedItems(slug, chain, contractAddress, apiKey);
+    if (!items.length) throw new Error('No items found. This collection may have no active listings.');
     if (mode === 'all') {
-      items = baseline;
       // Listing and owner enrichment are optional; failure must not discard valid trait scores.
       try { applyListingPrices(items, await fetchListingPrices(slug, apiKey, 55, 65)); }
       catch (e) { if (e.name === 'AbortError') throw e; warn('Listing prices unavailable; trait scores are still shown.'); }
       try { await enrichItems(items, chain, contractAddress, apiKey); }
       catch (e) { if (e.name === 'AbortError') throw e; warn('Some owner/rank metadata could not be enriched.'); }
-    } else items = await fetchListedItems(slug, chain, contractAddress, apiKey);
-    if (!items.length) throw new Error('No items found. This collection may have no active listings.');
+    }
+    const prepared = await prepareScoringBaseline(slug, apiKey, totalSupply, traitCounts, items, mode === 'all' ? items : null);
+    traitCounts = prepared.traitCounts;
     await resolveOwnerNames(items, apiKey);
     const allTraitTypes = buildTraitTypes(traitCounts);
     const missingCountByType = buildMissingCountByType(traitCounts, totalSupply);
-    const pairCounts = baseline ? buildPairCounts(baseline, totalSupply) : null;
+    const pairCounts = prepared.pairCounts;
     cachedFetchData = { mode, items, traitCounts, totalSupply, thresholds, points, allTraitTypes, missingCountByType, pairCounts, slug, chain, contractAddress, fetchedAt: new Date().toISOString(), warnings: [...runWarnings] };
     populateWeightsPanel(allTraitTypes);
     const scored = items.map(item => scoreNFT(item, traitCounts, totalSupply, runConfig, pairCounts));
@@ -633,6 +622,24 @@ async function fetchAllItems(slug, apiKey, totalSupply) {
   return [...items.values()];
 }
 
+async function prepareScoringBaseline(slug, apiKey, supply, traitCounts, items, baseline = null) {
+  if (!baseline && Object.keys(traitCounts).length && !runConfig.scoreMissing && !runConfig.scorePairs && !needsTraitScan(items, traitCounts)) {
+    return { traitCounts, pairCounts: null };
+  }
+  try {
+    baseline ||= await fetchAllItems(slug, apiKey, supply);
+    if (baseline.some(i => !i.traitsKnown)) await enrichItems(baseline, '', '', apiKey);
+    const scanned = countTraits(baseline, supply);
+    if (!scanned._meta.complete) warn(`Metadata scan returned ${baseline.length}/${supply} NFTs or incomplete traits. Measured missing/pair frequencies are unavailable.`);
+    traitCounts = supplementTraitCounts(traitCounts, scanned, supply);
+    return { traitCounts, pairCounts: buildPairCounts(baseline, supply) };
+  } catch (e) {
+    if (e.name === 'AbortError') throw e;
+    warn('Full metadata scan unavailable; available base scores are retained. Checked missing-data scoring uses labelled assumptions where needed.');
+    return { traitCounts, pairCounts: null };
+  }
+}
+
 // ─── Owner Name Resolution ───
 let ownerNameCache = new Map(); // address -> {name, ts}
 const OWNER_CACHE_KEY = 'nft_scorer_owner_cache';
@@ -755,9 +762,7 @@ function reScoreWithWeights() {
     const { thresholds, points } = beginConfig();
     const d = cachedFetchData;
     (d.warnings || []).forEach(warn);
-    if ((runConfig.scorePairs && !d.pairCounts?._meta?.complete) || (runConfig.scoreMissing && !d.traitCounts._meta?.present)) {
-      warn('Missing/pair bonuses need a new analysis with those options enabled, so a full population can be fetched.');
-    }
+    if (runConfig.scorePairs && !d.pairCounts?._meta?.complete) warn('Pair bonuses need a new analysis with the option enabled, so a full population can be fetched.');
     Object.assign(d, { thresholds, points });
     const scored = d.items.map(item => scoreNFT(item, d.traitCounts, d.totalSupply, runConfig, d.pairCounts));
     finishAnalysis(scored, d.totalSupply, d.slug, d.chain, d.contractAddress, thresholds, points);
@@ -795,7 +800,7 @@ function renderPortfolioSummary(s) {
     </div>
     <div style="font-size:0.72rem; color:var(--text-muted); margin-top:6px; line-height:1.5;">
       Custom tier scores are grouped by collection, not ranked across collections. Partial data is labelled on each item.
-      OpenSea ranks are shown separately and never converted into trait points. Missing/pair bonuses are not inferred from wallet holdings.
+      OpenSea ranks are shown separately and never converted into trait points. Checked missing-data scoring may include labelled assumptions; pair bonuses need a full collection scan.
     </div>
     ${skippedNote}
     ${unscoredList}
@@ -848,8 +853,8 @@ async function analyzePortfolio() {
     if (!topSlugs.length) throw new Error('Wallet NFTs were returned without collection identifiers; no trustworthy portfolio score is available.');
     const portfolioItems = [], unscoredCollections = [], buckets = { tier: 0, rank: 0, unscored: 0 };
     // No collection-wide corpus is fetched for each wallet collection. These bonuses cannot be inferred from holdings.
-    if (runConfig.scoreMissing || runConfig.scorePairs) warn('Portfolio omits missing/pair bonuses: wallet holdings are not a complete collection population.');
-    const portfolioConfig = { ...runConfig, scoreMissing: false, scorePairs: false };
+    if (runConfig.scorePairs) warn('Portfolio omits pair bonuses: wallet holdings are not a complete collection population.');
+    const portfolioConfig = { ...runConfig, scorePairs: false };
     for (const [index, slug] of topSlugs.entries()) {
       abortController.signal.throwIfAborted();
       setProgress(35 + index / topSlugs.length * 60, `Scoring ${slug}...`);
@@ -971,16 +976,11 @@ async function runCompareAnalysis(slug, apiKey, tierConfig, pStart, pEnd, prefet
   let traitCounts = {};
   try { traitCounts = parseTraitCounts(await apiGet(`/api/v2/traits/${encodeURIComponent(slug)}`, apiKey), totalSupply); }
   catch (e) { if (e.name === 'AbortError') throw e; }
-  let baseline = null;
-  if (!Object.keys(traitCounts).length || runConfig.scoreMissing || runConfig.scorePairs) {
-    baseline = await fetchAllItems(slug, apiKey, totalSupply);
-    if (baseline.some(i => !i.traitsKnown)) await enrichItems(baseline, chain, contractAddress, apiKey);
-    const counts = countTraits(baseline, totalSupply);
-    if (counts._meta.complete || !Object.keys(traitCounts).length) traitCounts = counts;
-  }
   const items = await fetchListedItems(slug, chain, contractAddress, apiKey);
   if (!items.length) throw new Error(`${slug}: no listed items`);
-  const pairCounts = baseline ? buildPairCounts(baseline, totalSupply) : null;
+  const prepared = await prepareScoringBaseline(slug, apiKey, totalSupply, traitCounts, items);
+  traitCounts = prepared.traitCounts;
+  const pairCounts = prepared.pairCounts;
   const scored = items.map(item => scoreNFT(item, traitCounts, totalSupply, runConfig, pairCounts));
 
   const scores = scored.filter(i => i.scoringMethod !== 'Unscored').map(i => i.totalScore);
@@ -1002,7 +1002,7 @@ async function runCompareAnalysis(slug, apiKey, tierConfig, pStart, pEnd, prefet
   // "% in rarest tier" = share of listed items with at least one trait in the rarest-configured tier.
   // activeTiers is sorted by threshold ascending, so activeTiers[0] is the rarest band.
   const rarestTierName = activeTiers[0]?.name || 'orange';
-  const rarestCount = scored.filter(it => it.mainTraits.some(t => t.status === 'known' && !t.isMissing && t.tier === rarestTierName)).length;
+  const rarestCount = scored.filter(it => [...it.mainTraits, ...it.specialTraits].some(t => t.status === 'known' && !t.isMissing && t.tier === rarestTierName)).length;
   const rarestTierPct = scores.length > 0 ? Math.round((rarestCount / scored.length) * 100) : null;
 
   const BINS = 12;
@@ -1021,6 +1021,7 @@ async function runCompareAnalysis(slug, apiKey, tierConfig, pStart, pEnd, prefet
     coverage: Math.round(scored.filter(i => i.coverage === 1).length / scored.length * 100),
     source: traitCounts._meta?.source || 'Unavailable frequencies',
     warnings: [...runWarnings],
+    assumedCount: scored.filter(i => i.assumedTraits > 0).length,
     topScore: maxS,
     avgScore: scores.length ? Math.round(scores.reduce((s, v) => s + v, 0) / scores.length) : null,
     medianScore: median,
@@ -1058,10 +1059,10 @@ function renderCompareTabResults(A, B) {
           <span>${escapeHtml(r.name)}</span>
         </h3>
         <div class="col-sub"><a href="https://opensea.io/collection/${encodeURIComponent(r.slug)}" target="_blank" rel="noopener" style="color:var(--accent); text-decoration:none;">${escapeHtml(r.slug)}</a> &middot; ${r.totalSupply} items total &middot; ${r.count} listed</div>
-        <p class="help-text">${r.coverage}% of listed NFTs have full trait coverage. ${escapeHtml(r.source)}.</p>
+        <p class="help-text">${r.coverage}% of listed NFTs have full measured trait coverage. ${escapeHtml(r.source)}.${r.assumedCount ? ` ${r.assumedCount} NFTs include assumed-rarity points (missing-data option enabled).` : ''}</p>
         <div style="padding:10px 0; border-top:1px solid var(--border); border-bottom:1px solid var(--border); text-align:center;">
           <div style="font-size:2rem; font-weight:800; line-height:1; color:${heroColor};">${r.rarestTierPct == null ? 'N/A' : r.rarestTierPct + '%'}</div>
-          <div style="font-size:0.7rem; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.8px; margin-top:2px;">in rarest tier (${escapeHtml(rarestTierName)})</div>
+          <div style="font-size:0.7rem; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.8px; margin-top:2px;">with a measured rarest-tier trait (${escapeHtml(rarestTierName)})</div>
         </div>
         <div class="compare-stat-row">
           <div class="compare-stat"><div class="num">${r.medianScore ?? 'N/A'}</div><div class="lbl">Median (scored NFTs)</div></div>
@@ -1074,8 +1075,8 @@ function renderCompareTabResults(A, B) {
   const explainer = `
     <div style="grid-column:1 / -1; padding:8px 12px; background:var(--bg); border:1px dashed var(--border); border-radius:6px; margin-bottom:4px; font-size:0.78rem; color:var(--text-muted); line-height:1.5;">
       <strong style="color:var(--text);">How to read this:</strong>
-      the headline <strong>% in rarest tier</strong> is the share of listed items with at least one trait in your currently-defined rarest band (${escapeHtml(rarestTierName)}).
-      These are fetched listings, not random collection samples. Raw scores depend on each collection's trait structure; a higher score does not mean an NFT is rarer across collections. Missing frequencies are not rare traits. Floors are shown only when payment currencies are comparable.
+      the headline is the share of listed items with at least one measured main or special trait in your currently-defined rarest band (${escapeHtml(rarestTierName)}); missing-trait bonuses and assumptions are not counted in that percentage.
+      These are fetched listings, not random collection samples. Raw scores depend on each collection's trait structure; a higher score does not mean an NFT is rarer across collections. Checked missing-data scoring includes labelled assumed-rarity points in totals and histograms. Floors are shown only when payment currencies are comparable.
       Histograms show custom point distributions on a shared point axis.
     </div>`;
 
@@ -1208,7 +1209,8 @@ function renderResults(items, totalSupply, slug, chain, contractAddress, thresho
   const available = items.filter(i => i.scoringMethod !== 'Unscored').length;
   const partial = items.filter(i => i.scoringMethod !== 'Unscored' && i.coverage < 1).length;
   const warnings = [...runWarnings];
-  if (resultConfig.scoreMissing && items.some(i => !i.missingAvailable)) warnings.push('Missing-trait bonus unavailable for items without a complete baseline.');
+  const assumedCount = items.filter(i => i.assumedTraits > 0).length;
+  if (assumedCount) warnings.push(`${assumedCount} NFTs include assumed-rarity contributions because missing-data scoring is checked. These are not measured frequencies.`);
   if (resultConfig.scorePairs && items.some(i => !i.pairsAvailable)) warnings.push('Pair bonus unavailable without a complete collection population.');
   if (items.some(i => i.priceComparable === false)) warnings.push('Some payment-token identities are unavailable; these prices are excluded from value/floor comparisons.');
   const provenance = document.getElementById('provenance');
@@ -1314,7 +1316,7 @@ function renderCards(items, totalSupply, chain, contractAddress, minScore, maxSc
         </div>
         <div class="item-score" style="color:${item.scoreColor}">
           ${item.scoringMethod === 'Unscored' ? '—' : item.totalScore}
-          <div class="score-method">${escapeHtml(item.scoringMethod)}${item.coverage < 1 && item.scoringMethod !== 'Unscored' ? ' · partial' : ''}</div>
+          <div class="score-method">${escapeHtml(item.scoringMethod)}${item.coverage < 1 && item.scoringMethod !== 'Unscored' ? ' · partial' : ''}${item.assumedTraits ? ` · ${item.assumedPoints} assumed pts` : ''}</div>
           <div class="score-breakdown">
             ${(resultConfig?.tiers || activeTiers).map(t => `<span style="color:${t.color}">${item.tierCounts[t.name] || 0} ${escapeHtml(t.name)}</span>`).join(' · ')}
           </div>
@@ -1328,7 +1330,7 @@ function renderCards(items, totalSupply, chain, contractAddress, minScore, maxSc
             <div class="trait-tag" style="${traitTagStyle(t.tier)}">
               <span class="trait-type">${escapeHtml(t.type)}</span>
               <span class="trait-value">${escapeHtml(t.value)}</span>
-              <span class="trait-pct">${t.status === 'known' ? t.pct + '% (' + t.count + '/' + itemSupply + ')' : t.status === 'excluded' ? 'Excluded from scoring' : 'Frequency unavailable'}${t.points > 0 ? ' +' + t.points : ''}</span>
+              <span class="trait-pct">${t.status === 'known' ? t.pct + '% (' + t.count + '/' + itemSupply + ')' : t.status === 'assumed' ? 'Assumed rare · frequency unavailable' : 'Frequency unavailable'}${t.points > 0 ? ' +' + t.points : ''}</span>
             </div>`).join('')}
         </div>
       </div>
@@ -1346,13 +1348,13 @@ function renderCards(items, totalSupply, chain, contractAddress, minScore, maxSc
       </div>` : ''}
       ${item.specialTraits.length > 0 ? `
       <div class="special-traits">
-        <button class="special-toggle" onclick="toggleSpecial(this)">&#9656; Show ${item.specialTraits.length} Scoring Special Traits</button>
+         <button class="special-toggle" onclick="toggleSpecial(this)">&#9656; Show ${item.specialTraits.length} Special Traits</button>
         <div class="special-content">
           ${[...item.specialTraits].sort((a, b) => b.points - a.points || a.pct - b.pct).map(t => `
             <div class="trait-tag" style="${traitTagStyle(t.tier)}">
               <span class="trait-type">${escapeHtml(t.type.replace(/^_/, ''))}</span>
               <span class="trait-value">${escapeHtml(t.value)}</span>
-              <span class="trait-pct">${t.pct}% +${t.points}</span>
+              <span class="trait-pct">${t.status === 'known' ? t.pct + '%' : t.status === 'assumed' ? 'Assumed rare · frequency unavailable' : 'Frequency unavailable'}${t.points > 0 ? ' +' + t.points : ''}</span>
             </div>`).join('')}
         </div>
       </div>` : ''}
@@ -1389,7 +1391,7 @@ function renderTable(items, totalSupply, chain, contractAddress, minScore, maxSc
         <td class="score-cell" style="color:${item.scoreColor}">${item.scoringMethod === 'Unscored' ? '—' : item.totalScore}</td>
         <td>${item.valueScore != null ? item.valueScore : '—'}</td>
         <td class="price-cell">${item.price != null ? formatPrice(item.price) + ' ' + escapeHtml(item.currency) : '—'}</td>
-        <td><button class="row-toggle" aria-expanded="false" aria-controls="expand-${idx}" onclick="toggleTableRow(this.closest('tr'))">${escapeHtml(item.name)}</button><div class="score-method">${escapeHtml(item.scoringMethod)} · ${Math.round(item.coverage * 100)}% coverage</div>${item.collectionName ? ` <span style="color:var(--text-muted); font-size:0.72rem;">· ${escapeHtml(item.collectionName)}</span>` : ''}${item.isBargain ? ' <span class="badge badge-bargain">High score / lower price</span>' : ''}</td>
+        <td><button class="row-toggle" aria-expanded="false" aria-controls="expand-${idx}" onclick="toggleTableRow(this.closest('tr'))">${escapeHtml(item.name)}</button><div class="score-method">${escapeHtml(item.scoringMethod)} · ${Math.round(item.coverage * 100)}% measured coverage${item.assumedTraits ? ` · ${item.assumedPoints} assumed pts` : ''}</div>${item.collectionName ? ` <span style="color:var(--text-muted); font-size:0.72rem;">· ${escapeHtml(item.collectionName)}</span>` : ''}${item.isBargain ? ' <span class="badge badge-bargain">High score / lower price</span>' : ''}</td>
         <td>${ownerLinkHtml(item, ' onclick="event.stopPropagation()"')}</td>
         <td>${item.rarityRank || 'N/A'}</td>
         <td><div class="tier-dots">
@@ -1400,11 +1402,11 @@ function renderTable(items, totalSupply, chain, contractAddress, minScore, maxSc
       <tr class="expand-row" id="expand-${idx}">
         <td colspan="10" class="expand-cell">
           <div class="traits-grid">
-            ${[...item.mainTraits].sort((a, b) => b.points - a.points || a.pct - b.pct).map(t => `
+          ${[...item.mainTraits, ...item.specialTraits].sort((a, b) => b.points - a.points || a.pct - b.pct).map(t => `
               <div class="trait-tag" style="${traitTagStyle(t.tier)}">
                 <span class="trait-type">${escapeHtml(t.type)}</span>
                 <span class="trait-value">${escapeHtml(t.value)}</span>
-                <span class="trait-pct">${t.status === 'known' ? t.pct + '%' : t.status === 'excluded' ? 'Excluded' : 'Frequency unavailable'}${t.points > 0 ? ' +' + t.points : ''}</span>
+                <span class="trait-pct">${t.status === 'known' ? t.pct + '%' : t.status === 'assumed' ? 'Assumed rare · frequency unavailable' : 'Frequency unavailable'}${t.points > 0 ? ' +' + t.points : ''}</span>
               </div>`).join('')}
           </div>
         </td>
@@ -1512,14 +1514,14 @@ function exportCSV() {
   const exportItems = getDisplayItems();
   if (exportItems.length === 0) return;
   const tierHeaders = (resultConfig?.tiers || activeTiers).map(t => csvSafe(t.name + ' Traits'));
-  const headers = ['Position', 'Name', 'Token ID', 'Score', 'Score per quoted currency unit', 'Price', 'Currency', 'Owner', 'OS Rarity Rank', ...tierHeaders, 'High score lower price', 'OpenSea URL', 'Chain', 'Contract', 'Scoring method', 'Trait coverage', 'Engine', 'Config fingerprint', 'Frequency source'];
+  const headers = ['Position', 'Name', 'Token ID', 'Score', 'Score per quoted currency unit', 'Price', 'Currency', 'Owner', 'OS Rarity Rank', ...tierHeaders, 'High score lower price', 'OpenSea URL', 'Chain', 'Contract', 'Scoring method', 'Measured trait coverage', 'Engine', 'Config fingerprint', 'Frequency source', 'Assumed rarity contributions', 'Assumed rarity points'];
   const rows = exportItems.map((item, idx) => [
     idx + 1, csvSafe(item.name), csvSafe(item.tokenId), item.scoringMethod === 'Unscored' ? '' : item.totalScore,
     item.valueScore ?? '', item.price != null ? formatPrice(item.price) : '',
     csvSafe(item.currency), csvSafe(item.ownerName || item.owner || ''), item.rarityRank || '',
     ...(resultConfig?.tiers || activeTiers).map(t => item.tierCounts[t.name] || 0),
     item.isBargain ? 'Yes' : '', item.demo ? '' : csvSafe(openSeaItemUrl(item.chain || '', item.contractAddress || '', item.tokenId)),
-    csvSafe(item.chain), csvSafe(item.contractAddress), csvSafe(item.scoringMethod), item.coverage, ENGINE_VERSION, csvSafe(configFingerprint(resultConfig)), csvSafe(item.source)
+    csvSafe(item.chain), csvSafe(item.contractAddress), csvSafe(item.scoringMethod), item.coverage, ENGINE_VERSION, csvSafe(configFingerprint(resultConfig)), csvSafe(item.source), item.assumedTraits || 0, item.assumedPoints || 0
   ]);
   const csv = [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
   const blob = new Blob([csv], { type: 'text/csv' });
