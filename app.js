@@ -1,11 +1,13 @@
-import { ENGINE_VERSION, numberSetting, validateTiers, traitKey, parseTraitCounts, countTraits, supplementTraitCounts, needsTraitScan, buildTraitTypes, buildMissingCountByType, buildPairCounts, classifyTrait as classifyCore, scoreNFT, itemKey, listingAsset, normalizeNFT, addValueMetrics, configFingerprint } from './core.js?v=1.2.0';
-import { createApiClient, abortableDelay, nextPage, fetchNFTBatches } from './api.js?v=1.2.0';
-import { createKeyStore } from './storage.js?v=1.2.0';
-import { validateConfig } from './config.js?v=1.2.0';
+import { ENGINE_VERSION, numberSetting, validateTiers, traitKey, parseTraitCounts, countTraits, supplementTraitCounts, needsTraitScan, buildTraitTypes, buildMissingCountByType, buildPairCounts, classifyTrait as classifyCore, scoreNFT, itemKey, listingAsset, normalizeNFT, addValueMetrics, configFingerprint } from './core.js?v=1.3.0';
+import { createApiClient, abortableDelay, nextPage, fetchNFTBatches } from './api.js?v=1.3.0';
+import { createKeyStore } from './storage.js?v=1.3.0';
+import { validateConfig } from './config.js?v=1.3.0';
+import { ARTBLOCKS_CHAINS, createArtBlocksClient, fetchArtBlocksPortfolio, projectIdentity, artBlocksTraitCounts, normalizeArtBlocksToken } from './artblocks.js?v=1.3.0';
 let resultConfig = null;
 let resultMode = 'listed';
 let runMode = 'listed';
 const apiRequest = createApiClient();
+const artBlocksRequest = createArtBlocksClient();
 const browserStorage = name => { try { return window[name]; } catch { return undefined; } };
 const keyStore = createKeyStore(browserStorage('sessionStorage'), browserStorage('localStorage'));
 const preferences = {
@@ -50,7 +52,7 @@ let renderParams = {}; // cached params for re-rendering
 let traitWeights = new Map(); // traitType -> multiplier
 let cachedFetchData = null; // {items, traitCounts, totalSupply, thresholds, points, allTraitTypes, slug, chain, contractAddress}
 let compareResult = null; // set by analyzeCompare — {slug, name, count, topScore, avgScore, lowScore, totalSupply, floorPrice, floorCurrency, scoredItems}
-let viewingPortfolio = false; // true when current scoredItems are cross-collection portfolio results
+let viewingPortfolio = false; // true when scoredItems are Art Blocks project-grouped holdings
 
 // Progress-bar phase boundaries for the top-level analyze() flow.
 // Internal fetchers (fetchListingPrices, enrichItems) accept their own
@@ -511,7 +513,7 @@ function finishAnalysis(items, totalSupply, slug, chain, contractAddress, thresh
   const maxScore = scores.length ? Math.max(...scores) : 0;
 
   addValueMetrics(items);
-  items.forEach(item => { item.scoreColor = scoreColor(item.totalScore, minScore, maxScore); });
+  items.forEach(item => { item.scoreColor = viewingPortfolio ? 'var(--accent)' : scoreColor(item.totalScore, minScore, maxScore); });
   items.sort(makeSortFn('score', 'desc'));
   scoredItems = items;
 
@@ -770,42 +772,20 @@ function reScoreWithWeights() {
 }
 
 // ─── Portfolio summary rendering ───
-function renderPortfolioSummary(s) {
-  const el = document.getElementById('portfolioSummary');
-  if (!el) return;
-  const totalScored = s.buckets.tier;
-  const pctScored = s.walletNfts > 0 ? Math.round((totalScored / s.walletNfts) * 100) : 0;
-  const shortAddr = `${s.addr.slice(0, 6)}…${s.addr.slice(-4)}`;
-  const unscoredList = s.unscoredCollections.length > 0
-    ? `<details style="margin-top:8px;"><summary style="cursor:pointer; font-size:0.78rem; color:var(--text-muted);">${s.unscoredCollections.length} collection${s.unscoredCollections.length === 1 ? '' : 's'} not scored</summary>
-        <ul style="margin:6px 0 0 18px; font-size:0.75rem; color:var(--text-muted);">
-          ${s.unscoredCollections.map(c => `<li><a href="https://opensea.io/collection/${encodeURIComponent(c.slug)}" target="_blank" rel="noopener" style="color:var(--accent);">${escapeHtml(c.name)}</a> &mdash; ${c.count} item${c.count === 1 ? '' : 's'} (${escapeHtml(c.reason)})</li>`).join('')}
-        </ul>
-      </details>`
-    : '';
-  const skippedNote = s.skippedCollectionsCount > 0
-    ? `<div style="font-size:0.75rem; color:var(--text-muted); margin-top:6px;">Only the top ${s.collectionsScanned} collections by holding count were scanned &mdash; ${s.skippedCollectionsCount} additional collection${s.skippedCollectionsCount === 1 ? '' : 's'} (${s.skippedCollectionItems} item${s.skippedCollectionItems === 1 ? '' : 's'}) weren't processed.</div>`
-    : '';
-  el.innerHTML = `
-    <div class="panel-title">Portfolio &middot; ${escapeHtml(shortAddr)}</div>
-    <div style="display:flex; gap:18px; flex-wrap:wrap; align-items:baseline;">
-      <div><span style="font-size:1.6rem; font-weight:700;">${s.walletNfts}</span> <span style="font-size:0.75rem; color:var(--text-muted);">items</span></div>
-      <div><span style="font-size:1.2rem; font-weight:600;">${s.collectionsTotal}</span> <span style="font-size:0.75rem; color:var(--text-muted);">collections</span></div>
-      <div style="flex:1;"></div>
-      <div style="font-size:0.82rem;">
-        <span style="color:var(--score-high); font-weight:600;">${s.buckets.tier}</span> <span style="color:var(--text-muted);">tier-scored</span>
-        &middot; <span style="color:var(--score-low); font-weight:600;">${s.buckets.unscored}</span> <span style="color:var(--text-muted);">unscored</span>
-        <span style="color:var(--text-muted);">(${pctScored}% scored overall)</span>
-      </div>
-    </div>
-    <div style="font-size:0.72rem; color:var(--text-muted); margin-top:6px; line-height:1.5;">
-      Custom tier scores are grouped by collection, not ranked across collections. Partial data is labelled on each item.
-      OpenSea ranks are shown separately and never converted into trait points. Checked missing-data scoring may include labelled assumptions; pair bonuses need a full collection scan.
-    </div>
-    ${skippedNote}
-    ${unscoredList}
+function renderPortfolioSummary(result, items, addr) {
+  const scored = items.filter(i => i.scoringMethod !== 'Unscored').length;
+  const networks = ARTBLOCKS_CHAINS.map(c => `${c.name}: ${result.catalog.counts.get(c.id) || 0}`).join(' · ');
+  const status = result.partial ? 'Partial scan — see notices below.' : 'Indexed holdings scan complete.';
+  document.getElementById('portfolioSummary').innerHTML = `
+    <div class="panel-title">Art Blocks Portfolio · ${escapeHtml(addr.slice(0, 6) + '…' + addr.slice(-4))}</div>
+    <p><strong>${items.length}</strong> verified pieces · <strong>${result.projects.size}</strong> projects · ${scored} scored · ${items.length - scored} unscored</p>
+    <p class="help-text">${result.catalog.contracts.size} officially indexed core contracts verified live (${escapeHtml(networks)}). Catalog checked ${escapeHtml(result.catalog.checkedAt)}. ${status}</p>
+    <p class="help-text">Includes flagship, legacy partners, Studio, Collaborations and verified Engine/Flex. Non-Art-Blocks NFTs are not fetched or scored. Each piece is scored against its own project’s minted supply and feature frequencies, not its shared contract or a similarly named collection.</p>
+    <p class="help-text">Scores stay grouped by project. Your tiers, weights and missing-data option still apply; assumed points are labelled. Pair bonuses need a full project scan and are unavailable here. Ownership and features reflect the Art Blocks index, which may lag transfers or newly registered contracts.</p>
+    ${result.warnings.length ? `<ul class="help-text">${result.warnings.map(w => `<li>${escapeHtml(w)}</li>`).join('')}</ul>` : ''}
+    <a href="https://github.com/hulkiokantabak/nft-rarity-scorer/blob/master/ARTBLOCKS_SCOPE.md" target="_blank" rel="noopener">Contract coverage and verification method</a>
   `;
-  el.style.display = '';
+  document.getElementById('portfolioSummary').style.display = '';
 }
 
 function clearPortfolioSummary() {
@@ -813,71 +793,55 @@ function clearPortfolioSummary() {
   if (el) { el.style.display = 'none'; el.innerHTML = ''; }
 }
 
-// ─── Portfolio (score a wallet's holdings across collections) ───
+// ─── Portfolio (officially indexed Art Blocks projects only) ───
 async function analyzePortfolio() {
   if (isRunning) return;
   hideError();
-  const apiKey = getApiKey(), input = document.getElementById('walletInput').value.trim();
-  if (!apiKey || !input) { showError('Enter an API key and an Ethereum wallet address, ENS name, or OpenSea username.'); return; }
+  const input = document.getElementById('walletInput').value.trim();
+  if (!input) { showError('Enter a wallet address, ENS name or OpenSea username.'); return; }
   let thresholds, points;
   try { ({ thresholds, points } = beginConfig()); } catch (e) { showError(e.message); return; }
   clearResultView(); cachedFetchData = null;
   isRunning = true; viewingPortfolio = true;
   const btn = document.getElementById('portfolioBtn');
-  btn.disabled = true; btn.textContent = 'Scoring...';
+  btn.disabled = true; btn.textContent = 'Verifying Art Blocks...';
   abortController = new AbortController(); showProgress();
   compareResult = null; renderCompareStats(); clearPortfolioSummary(); refreshSnapshotsPanel();
-  document.getElementById('weightsPanel').style.display = 'none';
-  document.getElementById('resultsGrid').innerHTML = '';
-  document.getElementById('resultsTable').innerHTML = '';
-  document.getElementById('resultsHeader').classList.remove('visible');
   try {
     let addr = input;
-    if (!/^0x[a-fA-F0-9]{40}$/.test(addr)) addr = (await apiGet(`/api/v2/accounts/resolve/${encodeURIComponent(input)}`, apiKey)).address;
-    if (!/^0x[a-fA-F0-9]{40}$/.test(addr || '')) throw new Error('This Portfolio view supports Ethereum addresses only.');
-    const base = `/api/v2/chain/ethereum/account/${encodeURIComponent(addr)}/nfts?limit=200`;
-    let url = base;
-    const seen = new Set(), nftsById = new Map();
-    do {
-      const data = await apiGet(url, apiKey);
-      for (const nft of data.nfts || []) if (nft.contract) nftsById.set(itemKey({ chain: 'ethereum', contractAddress: nft.contract, tokenId: nft.identifier }), nft);
-      url = nextPage(base, data.next, seen);
-      if (nftsById.size >= 10000 && url) { warn('Portfolio stopped at 10,000 NFTs; this is a partial wallet scan.'); break; }
-      setProgress(20, `Fetched ${nftsById.size} Ethereum NFTs...`);
-    } while (url);
-    const nfts = [...nftsById.values()];
-    if (!nfts.length) throw new Error('No Ethereum NFTs found for this wallet.');
-    const groups = new Map();
-    for (const nft of nfts) { const slug = nft.collection; if (!slug) continue; if (!groups.has(slug)) groups.set(slug, []); groups.get(slug).push(nft); }
-    const slugs = [...groups.keys()].sort((a, b) => groups.get(b).length - groups.get(a).length), topSlugs = slugs.slice(0, 25);
-    if (!topSlugs.length) throw new Error('Wallet NFTs were returned without collection identifiers; no trustworthy portfolio score is available.');
-    const portfolioItems = [], unscoredCollections = [], buckets = { tier: 0, rank: 0, unscored: 0 };
-    // No collection-wide corpus is fetched for each wallet collection. These bonuses cannot be inferred from holdings.
-    if (runConfig.scorePairs) warn('Portfolio omits pair bonuses: wallet holdings are not a complete collection population.');
-    const portfolioConfig = { ...runConfig, scorePairs: false };
-    for (const [index, slug] of topSlugs.entries()) {
-      abortController.signal.throwIfAborted();
-      setProgress(35 + index / topSlugs.length * 60, `Scoring ${slug}...`);
-      let colData = { name: slug, total_supply: 0 }, counts = parseTraitCounts({}, 0);
-      try {
-        colData = await apiGet(`/api/v2/collections/${encodeURIComponent(slug)}`, apiKey);
-        counts = parseTraitCounts(await apiGet(`/api/v2/traits/${encodeURIComponent(slug)}`, apiKey), colData.total_supply);
-      } catch (e) { if (e.name === 'AbortError') throw e; warn(`${slug}: collection frequencies unavailable.`); }
-      const items = groups.get(slug).map(nft => normalizeNFT(nft, { chain: 'ethereum', owner: addr, collectionSlug: slug, collectionName: colData.name || slug }));
-      try { await enrichItems(items, 'ethereum', '', apiKey, 35, 90); }
-      catch (e) { if (e.name === 'AbortError') throw e; warn(`${slug}: incomplete NFT metadata.`); }
-      const scored = items.map(item => scoreNFT(item, counts, colData.total_supply, portfolioConfig, null));
-      const unscored = scored.filter(i => i.scoringMethod === 'Unscored').length;
-      buckets.tier += scored.length - unscored; buckets.unscored += unscored;
-      if (unscored) unscoredCollections.push({ slug, name: colData.name || slug, count: unscored, reason: 'no usable categorical frequencies or NFT traits; OpenSea rank shown separately when available' });
-      portfolioItems.push(...scored);
+    if (!/^0x[a-fA-F0-9]{40}$/.test(addr)) {
+      const apiKey = getApiKey();
+      if (!apiKey) throw new Error('Use a wallet address for key-free Art Blocks Portfolio. ENS/OpenSea username resolution needs your OpenSea API key.');
+      addr = (await apiGet(`/api/v2/accounts/resolve/${encodeURIComponent(input)}`, apiKey)).address;
     }
-    renderPortfolioSummary({ walletNfts: nfts.length, collectionsScanned: topSlugs.length, collectionsTotal: slugs.length, skippedCollectionsCount: slugs.length - topSlugs.length, skippedCollectionItems: slugs.slice(25).reduce((n, slug) => n + groups.get(slug).length, 0), buckets, unscoredCollections, addr });
-    if (portfolioItems.length) finishAnalysis(portfolioItems, nfts.length, 'portfolio', 'ethereum', '', thresholds, points);
-    document.getElementById('statCountLabel').textContent = 'Fetched holdings';
-    document.getElementById('statSupply').textContent = `${topSlugs.length}/${slugs.length} collections`;
+    if (!/^0x[a-fA-F0-9]{40}$/.test(addr || '')) throw new Error('Could not resolve a valid wallet address.');
+    addr = addr.toLowerCase();
+    const result = await fetchArtBlocksPortfolio(addr, artBlocksRequest, {
+      signal: abortController.signal,
+      onProgress: message => setProgress(40, message)
+    });
+    result.warnings.forEach(warn);
+    if (runConfig.scorePairs) warn('Art Blocks Portfolio omits pair bonuses: wallet holdings are not a complete project population.');
+    const portfolioConfig = { ...runConfig, scorePairs: false };
+    const projectCounts = new Map([...result.projects].map(([id, project]) => [id, artBlocksTraitCounts(project)]));
+    const scored = result.tokens.map(token => {
+      const identity = projectIdentity(token.chain_id, token.contract_address, token.token_id);
+      const project = result.projects.get(identity.key);
+      return scoreNFT(normalizeArtBlocksToken(token, project), projectCounts.get(identity.key), Number(project.invocations), portfolioConfig, null);
+    });
+    abortController.signal.throwIfAborted();
+    renderPortfolioSummary(result, scored, addr);
+    if (scored.some(item => item.unsupportedFeatures)) warn('Some Art Blocks feature values have unsupported structures. Their frequencies are unavailable; valid scalar traits retain their measured scores.');
+    if (!scored.length) {
+      if (result.partial) throw new Error('Art Blocks holdings could not be fully verified. Check the Portfolio notices and retry.');
+      setProgress(PROGRESS.done, 'No Art Blocks pieces indexed for this wallet on the supported production chains.');
+      return;
+    }
+    finishAnalysis(scored, scored.length, 'portfolio', '', '', thresholds, points);
+    document.getElementById('statCountLabel').textContent = 'Art Blocks pieces';
+    document.getElementById('statSupply').textContent = `${result.projects.size} projects`;
   } catch (e) { showError(e.name === 'AbortError' ? 'Portfolio scoring cancelled.' : e.message); }
-  finally { isRunning = false; btn.disabled = false; btn.textContent = 'Score Portfolio'; scheduleHideProgress(); }
+  finally { isRunning = false; btn.disabled = false; btn.textContent = 'Score Art Blocks Portfolio'; scheduleHideProgress(); }
 }
 
 // ─── Compare Tab (two-input self-contained comparison) ───
@@ -1215,7 +1179,7 @@ function renderResults(items, totalSupply, slug, chain, contractAddress, thresho
   if (items.some(i => i.priceComparable === false)) warnings.push('Some payment-token identities are unavailable; these prices are excluded from value/floor comparisons.');
   const provenance = document.getElementById('provenance');
   provenance.hidden = false;
-  provenance.innerHTML = `<strong>${slug === 'demo' ? 'Synthetic demo · ' : ''}Custom weighted trait tiers · v${ENGINE_VERSION}</strong><br>${available}/${items.length} NFTs scored; ${partial} partial. ${viewingPortfolio ? 'Ethereum holdings; grouped by collection.' : `${items.length}/${totalSupply} NFTs fetched (${resultMode}).`} Config ${configFingerprint(resultConfig)}. Data fetched ${escapeHtml((viewingPortfolio ? null : cachedFetchData?.fetchedAt) || new Date().toISOString())}. ${escapeHtml([...new Set(items.map(i => i.source))].join('; '))}. ${warnings.map(escapeHtml).join(' ')}`;
+  provenance.innerHTML = `<strong>${slug === 'demo' ? 'Synthetic demo · ' : ''}Custom weighted trait tiers · v${ENGINE_VERSION}</strong><br>${available}/${items.length} NFTs scored; ${partial} partial. ${viewingPortfolio ? 'Art Blocks holdings across Ethereum, Arbitrum, Base and Shape; grouped by chain, contract and project. No cross-project score ranking.' : `${items.length}/${totalSupply} NFTs fetched (${resultMode}).`} Config ${configFingerprint(resultConfig)}. Data fetched ${escapeHtml((viewingPortfolio ? null : cachedFetchData?.fetchedAt) || new Date().toISOString())}. ${escapeHtml([...new Set(items.map(i => i.source))].join('; '))}. ${warnings.map(escapeHtml).join(' ')}`;
   document.getElementById('resultsHeader').classList.add('visible');
 
   renderParams = { totalSupply, chain, contractAddress, minScore, maxScore };
@@ -1297,6 +1261,9 @@ function renderCards(items, totalSupply, chain, contractAddress, minScore, maxSc
     const itemChain = item.chain || chain;
     const itemContract = item.contractAddress || contractAddress;
     const itemSupply = item.totalSupply || totalSupply;
+    const marketplaceSlug = item.artBlocksVerified ? item.marketplaceSlug : item.collectionSlug;
+    const projectLabel = escapeHtml(item.collectionName || '');
+    const projectHtml = marketplaceSlug ? `<a href="https://opensea.io/collection/${encodeURIComponent(marketplaceSlug)}" target="_blank" rel="noopener" style="color:var(--accent);">${projectLabel}</a>` : projectLabel;
     return `
     <div class="item-card${item.isBargain ? ' bargain' : ''}">
       <div class="item-header">
@@ -1304,7 +1271,7 @@ function renderCards(items, totalSupply, chain, contractAddress, minScore, maxSc
           ${item.image && item.image.startsWith('https://') ? `<img class="item-thumb" src="${escapeHtml(item.image)}" alt="" loading="lazy">` : ''}
           <div>
           <div class="item-name"><span class="item-idx">#${idx + 1}</span> ${escapeHtml(item.name)}</div>
-          ${item.collectionName ? `<div style="font-size:0.72rem; color:var(--text-muted);">from <a href="https://opensea.io/collection/${encodeURIComponent(item.collectionSlug)}" target="_blank" rel="noopener" style="color:var(--accent);">${escapeHtml(item.collectionName)}</a></div>` : ''}
+          ${item.collectionName ? `<div style="font-size:0.72rem; color:var(--text-muted);">from ${projectHtml}${item.artBlocksVerified ? ` · ${escapeHtml(item.chain)} · project ${escapeHtml(item.artBlocksProjectId)}` : ''}</div>` : ''}
           <div class="item-badges">
             ${item.isBargain ? '<span class="badge badge-bargain">High score / lower price</span>' : ''}
           </div>
@@ -1449,11 +1416,11 @@ function applySorting() {
 
 function makeSortFn(field, dir) {
   return (a, b) => {
+    if (viewingPortfolio) { const group = (a.collectionSlug || '').localeCompare(b.collectionSlug || ''); if (group) return group; }
     const value = i => field === 'owner' ? i.ownerName || i.owner || null : field === 'price' ? i.price : field === 'value' ? i.valueScore : field === 'rarity' ? i.rarityRank : i.scoringMethod === 'Unscored' ? null : i.totalScore;
     const va = value(a), vb = value(b);
     if (va == null || vb == null) return va == null ? vb == null ? 0 : 1 : -1;
 
-    if (viewingPortfolio) { const group = (a.collectionSlug || '').localeCompare(b.collectionSlug || ''); if (group) return group; }
     if (field === 'price' || field === 'value') {
       const group = (a.currencyKey || a.currency || '').localeCompare(b.currencyKey || b.currency || '');
       if (group) return group;

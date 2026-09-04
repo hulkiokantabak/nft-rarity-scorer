@@ -1,32 +1,32 @@
-# v1.2.0 scoring correction handoff
+# v1.3.0 Art Blocks Portfolio handoff
 
-## Scope
-Correct the scoring-policy regressions introduced in v1.1.1, retaining the existing vanilla/static architecture, privacy/startup fixes and GitHub Pages hosting. The user explicitly requested that checked missing-data scoring award rare points.
+## Scope and changes
 
-## Changes
-- Original 7/3/1 tiers and exclusive boundaries are unchanged.
-- Restored known special traits, exact numeric frequencies from complete scans, and the original independent pair multiplier. Zero weights still disable contributions/pairs.
-- Preserve available API frequency distributions across Listed, All and Compare; complete scans supplement missing whole types and provide measured presence/pairs.
-- Missing-data checkbox now explicitly permits assumed rarity. Default unavailable present value: 7 points; assumed absent main type: 11 points. Measured absence uses its actual frequency. Unchecked: no points for missing/unavailable data.
-- Assumptions show N/A frequency/null count, reduce measured coverage, do not qualify for high-score/lower-price flags, and are identified in cards, table, Compare, provenance and CSV. Portfolio respects the checkbox.
-- Optional owner/rank enrichment preserves already-known traits within a run. Optional scan failures retain available base scores; cancellation still stops.
-- Expanded scoring and integration tests. Runtime assets and engine version now 1.2.0; incompatible old snapshots remain separate.
+Portfolio is now Art Blocks-only, including verified independently branded Engine/Flex projects as explicitly requested. Manual Analyze/Compare remain general-purpose. Existing vanilla/static architecture, GitHub Pages hosting, visibility and key storage are preserved.
+
+- Official live catalog: 205 audited cores across Ethereum (186), Arbitrum (12), Base (6), Shape (1). Legacy V0/V1 included. New indexed cores on these chains appear on subsequent scans.
+- Exact chain + contract + owner + token/project verification, not names/slugs/prefixes. A catalog failure stops safely; no unrelated fallback.
+- Key-free wallet-address queries directly to Art Blocks. ENS/OpenSea usernames still require OpenSea resolution/key. No credentials go to Art Blocks.
+- Per-project minted invocations and feature-value counts. Shared-contract projects never share a scoring baseline.
+- Existing 7/3/1 scoring and checked missing-data rare points preserved. Assumptions remain labelled/N/A/excluded from measured coverage. Exact scalar numeric/boolean traits work. Unsupported structured fields do not invalidate known siblings.
+- No pair bonuses, price/rank lookup, cross-project ranking/colors/average or top-25 cutoff in Portfolio. Explicit 10,000 verified-piece cap and partial-data warnings. Re-run Portfolio after changing scoring settings.
+- Full dated inventory and primary-source methodology in ARTBLOCKS_SCOPE.md and artblocks-contracts.json. The snapshot is not a runtime fallback.
+- Runtime assets and engine version pinned together to 1.3.0; old incompatible snapshots remain separate.
 
 ## Verification
-Local verification on 2026-09-04: all 70 tests passed; syntax checks passed. The suite covers restored scoring, opt-in assumptions and checkbox re-scoring, measured multi-valued/zero-present absence, mode consistency, enrichment protection, optional failures, numeric scans, zero settings, keys, startup and prior API cases. Independent review also ran 2,000 deterministic original-vs-current comparisons on complete distributions with positive weights and pair bonuses; totals matched.
 
-Historical v1.1.1 real-browser checks covered fresh initialization, theme, tabs, keyboard, demo, table and responsive layouts. This scoring correction is validated with deterministic and DOM integration tests, not a new authenticated browser run. Authenticated Listed/All/Compare/Portfolio requests and batch CORS remain a real-key smoke-test follow-up. Keys were not extracted or added to files.
+Local checks on 2026-09-04: all 90 tests passed; syntax checks passed. Tests cover four-chain identity, legacy/independent cores, shared-contract project isolation, key-free DOM integration, spoofed names/owners/contracts, BigInt project IDs, short pages, more than 25 projects, generating/missing aggregates, assumptions, invalid structured features, cancellation, caps and partial failures, plus all previous scoring/startup/storage/API regressions.
 
-This is a correction to the user's fully deployed website. Publish every runtime asset together to the existing GitHub Pages master root; .nojekyll keeps delivery static. Repository visibility and hosting remain unchanged.
+Live runtime-client checks confirmed all 205 catalog entries and a public Chromie Squiggle token's identity/features (9 traits, 10,000 supply, 584 count entries). HTTP checks confirmed Art Blocks CORS support for the deployed origin. No real user's stored API key was used/extracted. Verification is deterministic/DOM integration, API and HTTP checks, not a new real-browser or authenticated OpenSea run.
+
+Release authorization comes from this ongoing change/deploy request. Publish every runtime asset together to existing master-root GitHub Pages, including the new artblocks.js. Do not change visibility, hosting, licensing or stored keys.
 
 ## Deliberate limits
-- Ethereum-only Portfolio, cap 10,000 NFTs and top 25 collections, explicitly labelled.
-- No exact OpenRarity implementation, AI-generated rarity, live exchange conversion, price prediction, backend, or framework migration.
-- Unidentified payment-token prices are display-only and excluded from value/floor comparisons.
-- Rate-limit coordination is within one tab, not cross-tab.
-- Full scans are not atomic API snapshots; data can change mid-scan.
-- A value missing within an existing API category is left unavailable/assumed, not spliced into that category from another source.
-- Numeric-only Portfolio frequencies are not full-scanned per collection; the checkbox can opt into assumed points instead.
-- Existing inline event handlers remain supported through a window compatibility bridge. CSP still includes unsafe-inline for scripts/styles.
-- Browser-local settings and snapshots share this GitHub Pages origin with other projects.
-- Licensing and repository visibility are unchanged.
+
+- Official-index coverage, not every unofficial fork; new chains require an explicit update.
+- Ownership/features may lag. Multi-page scans are not atomic and transfers/mints can change results.
+- Art Blocks value aggregates do not prove per-token absence/pairs; never derive these from wallet holdings.
+- Partial chains/project frequencies/rejected records/caps are visible; complete catalog verification is mandatory.
+- No price prediction, AI rarity, cross-currency conversion, backend or framework migration.
+- Existing inline handlers/CSP unsafe-inline remain. Browser-local settings/snapshots share the Pages origin.
+- Original scoring-policy analysis remains in SCORING_REVIEW.md; its v1.2.0 Portfolio coverage limits are historical and superseded here.

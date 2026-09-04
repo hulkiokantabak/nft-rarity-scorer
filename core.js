@@ -1,5 +1,5 @@
 // Deterministic, DOM-free scoring. This is a custom heuristic, not OpenRarity.
-export const ENGINE_VERSION = '1.2.0';
+export const ENGINE_VERSION = '1.3.0';
 export const traitKey = (type, value) => JSON.stringify([String(type), String(value)]);
 const pairKey = (a, b) => JSON.stringify([a, b].sort());
 const validCount = (n, supply) => Number.isInteger(n) && n > 0 && n <= supply;
@@ -130,9 +130,9 @@ export function scoreNFT(item, counts, supply, config, pairCounts) {
   const traits = uniqueTraits(item.traits);
   const metadataKnown = item.traitsKnown !== false && !item.metadataUnavailable;
   const traitScores = [];
-  const score = (type, value, count, bonus = 1, isMissing = false) => {
+  const score = (type, value, count, bonus = 1, isMissing = false, frequencyUnavailable = false) => {
     const validSupply = Number.isInteger(supply) && supply > 0;
-    const known = metadataKnown && validSupply && validCount(count, supply) && counts._meta?.complete !== false;
+    const known = !frequencyUnavailable && metadataKnown && validSupply && validCount(count, supply) && counts._meta?.complete !== false;
     // Explicit opt-in: unavailable data may receive the rarest nonempty band,
     // but must never be represented as a measured 0% frequency.
     const assumed = !known && validSupply && config.scoreMissing === true;
@@ -141,14 +141,14 @@ export function scoreNFT(item, counts, supply, config, pairCounts) {
     const weight = numberSetting(weights.get(type), 1, 0, 10);
     traitScores.push({ type, value, count: known ? count : null, pct: known ? pct.toFixed(2) : 'N/A', tier, points: Math.round(pts * weight * bonus), status: known ? 'known' : assumed ? 'assumed' : 'unknown', isMissing });
   };
-  for (const t of traits) score(t.type, t.value, counts[traitKey(t.type, t.value)]);
+  for (const t of traits) score(t.type, t.value, counts[traitKey(t.type, t.value)], 1, false, t.frequencyUnavailable === true);
   const missingCounts = buildMissingCountByType(counts, supply);
   if (config.scoreMissing) for (const type of buildTraitTypes(counts)) {
     if (!type.startsWith('_') && !traits.some(t => t.type === type)) score(type, '[None]', missingCounts[type], numberSetting(config.missingBonus, 1.5, 0, 10), true);
   }
   let pairScores = [];
   if (config.scorePairs && metadataKnown && pairCounts?._meta?.complete && pairCounts._meta.population === supply) {
-    const eligible = traits.filter(t => !t.type.startsWith('_') && numberSetting(weights.get(t.type), 1, 0, 10) > 0 && validCount(counts[traitKey(t.type, t.value)], supply));
+    const eligible = traits.filter(t => !t.frequencyUnavailable && !t.type.startsWith('_') && numberSetting(weights.get(t.type), 1, 0, 10) > 0 && validCount(counts[traitKey(t.type, t.value)], supply));
     for (let i = 0; i < eligible.length; i++) for (let j = i + 1; j < eligible.length; j++) {
       const a = eligible[i], b = eligible[j];
       if (a.type === b.type) continue;

@@ -2,7 +2,7 @@
 
 ## Architecture
 Vanilla JavaScript static site, no production build and no browser runtime dependencies.
-Native modules: app.js, core.js, api.js, config.js, storage.js.
+Native modules: app.js, core.js, api.js, artblocks.js, config.js, storage.js.
 HTML: index.html. Styles: styles.css + accessibility.css.
 Use an HTTP server, not file://, because native modules require it.
 
@@ -25,8 +25,11 @@ Node 22+; LinkeDOM is a dev-only dependency. Tests use synthetic data, never rea
 - Zero settings remain valid through UI, JSON, URL and scoring.
 - NFT identity is chain + contract + token ID. Preserve non-EVM case.
 - Do not compare payment currencies without matching token identity.
-- Keep OpenSea rank distinct from custom tier points; group portfolios by collection.
-- API keys go only to the OpenSea origin; no redirects with credential headers.
+- Keep OpenSea rank distinct from custom tier points. Portfolio is Art Blocks-only, including verified Engine/Flex, on Ethereum/Arbitrum/Base/Shape. Verify the live official catalog and exact owner/chain/contract/project identity; never rely on names/slugs/prefixes or filter is_artblocks=true.
+- Portfolio frequencies use official project counts and minted invocations. Group by chain + contract + project, not shared core. No cross-project rank, color scale or average. No 25-project cap; report the 10,000 verified-piece cap and partial data.
+- Wallet subsets/Art Blocks value aggregates do not establish per-token absence or pairs. Unsupported structured fields must not invalidate measured scalar siblings.
+- artblocks-contracts.json is an audit snapshot, not a fallback allowlist. Catalog failure must not widen scope. Read ARTBLOCKS_SCOPE.md before changing coverage.
+- API keys go only to the OpenSea origin; no redirects with credential headers. Art Blocks queries never take a key or send cookies; address-only Portfolio is key-free.
 - Key storage defaults to the current tab; persistence needs explicit opt-in.
 - Result provenance describes the applied config, not subsequent control edits.
 - Snapshot compatibility checks include engine/config, population, source, mode and coverage.

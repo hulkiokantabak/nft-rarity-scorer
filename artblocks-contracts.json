@@ -1,0 +1,1442 @@
+{
+  "checkedAt": "2026-09-04T08:43:25.0489585Z",
+  "source": "https://data.artblocks.io/v1/graphql",
+  "purpose": "Audited snapshot only. Runtime verifies the live Art Blocks catalog on each scan; no static fallback.",
+  "contracts": [
+    {
+      "address": "0x00000000e75eadc620f4fcefab32f5173749c3a4",
+      "chain_id": 1,
+      "name": "Stitchables",
+      "contract_type": "GenArt721CoreV3_Engine_Flex",
+      "core_version": "v3.2.5"
+    },
+    {
+      "address": "0x00000001c1eaaf08507c38eaacdb2c0d880e7b6d",
+      "chain_id": 1,
+      "name": "Art Blocks Studio | 70",
+      "contract_type": "GenArt721CoreV3_Engine",
+      "core_version": "v3.2.4"
+    },
+    {
+      "address": "0x0000000222d40f1ae80791fdc42fa6eb5da6f80b",
+      "chain_id": 1,
+      "name": "glitch Gallery ",
+      "contract_type": "GenArt721CoreV3_Engine_Flex",
+      "core_version": "v3.2.5"
+    },
+    {
+      "address": "0x00000002ad21da55def6efb39fc3cdb15c679afe",
+      "chain_id": 1,
+      "name": "newrafael.work.2",
+      "contract_type": "GenArt721CoreV3_Engine",
+      "core_version": "v3.2.4"
+    },
+    {
+      "address": "0x00000003550505f51d314091f496d30a2b50ff90",
+      "chain_id": 1,
+      "name": "Art Blocks Studio | 17",
+      "contract_type": "GenArt721CoreV3_Engine",
+      "core_version": "v3.2.4"
+    },
+    {
+      "address": "0x000000058b5d9e705ee989fabc8dfdc1bfbdfa6b",
+      "chain_id": 1,
+      "name": "Art Blocks Studio | 3",
+      "contract_type": "GenArt721CoreV3_Engine_Flex",
+      "core_version": "v3.2.1"
+    },
+    {
+      "address": "0x00000007cc35dcab4a396249aefa295a8b6e16ba",
+      "chain_id": 1,
+      "name": "Art Blocks Studio | 7",
+      "contract_type": "GenArt721CoreV3_Engine_Flex",
+      "core_version": "v3.2.5"
+    },
+    {
+      "address": "0x0000000826d45c6b947d485eeb8322acccad8ddb",
+      "chain_id": 1,
+      "name": "Art Blocks Studio | 4",
+      "contract_type": "GenArt721CoreV3_Engine_Flex",
+      "core_version": "v3.2.1"
+    },
+    {
+      "address": "0x00000008a4f78d6941786e7fb09fb59a62cde226",
+      "chain_id": 1,
+      "name": "Art Blocks Studio | 8",
+      "contract_type": "GenArt721CoreV3_Engine_Flex",
+      "core_version": "v3.2.5"
+    },
+    {
+      "address": "0x000000098a14b4e08132fd55faec521ab597a001",
+      "chain_id": 1,
+      "name": "Art Blocks Studio | 5",
+      "contract_type": "GenArt721CoreV3_Engine",
+      "core_version": "v3.2.0"
+    },
+    {
+      "address": "0x0000000a77593cda3f3434454ae534163fe1a431",
+      "chain_id": 1,
+      "name": "Art Blocks Studio | 2",
+      "contract_type": "GenArt721CoreV3_Engine_Flex",
+      "core_version": "v3.2.1"
+    },
+    {
+      "address": "0x0000000b0a4340083afba8b0b71cbcd80432cf2c",
+      "chain_id": 1,
+      "name": "Art Blocks Studio | 1",
+      "contract_type": "GenArt721CoreV3_Engine_Flex",
+      "core_version": "v3.2.1"
+    },
+    {
+      "address": "0x0000000b79eba5ae9327d9b802ac778a67e5c156",
+      "chain_id": 1,
+      "name": "Art Blocks Studio | 12",
+      "contract_type": "GenArt721CoreV3_Engine_Flex",
+      "core_version": "v3.2.5"
+    },
+    {
+      "address": "0x0000000bf96eb73f37239f61c9344e40d4c3f665",
+      "chain_id": 1,
+      "name": "Art Blocks Studio | 68",
+      "contract_type": "GenArt721CoreV3_Engine",
+      "core_version": "v3.2.4"
+    },
+    {
+      "address": "0x0000000c687daed0fba60d1dba4e5f6149e8b894",
+      "chain_id": 1,
+      "name": "Art Blocks Studio | 92",
+      "contract_type": "GenArt721CoreV3_Engine",
+      "core_version": "v3.2.4"
+    },
+    {
+      "address": "0x0000000c687f0226eaf0bdb39104fad56738cdf2",
+      "chain_id": 1,
+      "name": "Art Blocks Studio | 0",
+      "contract_type": "GenArt721CoreV3_Engine_Flex",
+      "core_version": "v3.2.1"
+    },
+    {
+      "address": "0x0000000ecb73d12be8ba8bda2875fdbce332ea5c",
+      "chain_id": 1,
+      "name": "Art Blocks Studio | 6",
+      "contract_type": "GenArt721CoreV3_Engine",
+      "core_version": "v3.2.0"
+    },
+    {
+      "address": "0x0000000f17cf8d271da5c8d35eb5b2a426801b38",
+      "chain_id": 1,
+      "name": "Art Blocks Studio | 69",
+      "contract_type": "GenArt721CoreV3_Engine_Flex",
+      "core_version": "v3.2.5"
+    },
+    {
+      "address": "0x0000000f2927d885e7be55da01cc4c6d5da6b1ba",
+      "chain_id": 1,
+      "name": "In Resonance",
+      "contract_type": "GenArt721CoreV3_Engine_Flex",
+      "core_version": "v3.2.5"
+    },
+    {
+      "address": "0x0000001590abfb45b052c28fb7dac11c062b9337",
+      "chain_id": 1,
+      "name": "Art Blocks Studio | 53",
+      "contract_type": "GenArt721CoreV3_Engine_Flex",
+      "core_version": "v3.2.5"
+    },
+    {
+      "address": "0x00000024ca7f3cfba7084e3289a9048d79261b29",
+      "chain_id": 1,
+      "name": "Art Blocks Studio | 86",
+      "contract_type": "GenArt721CoreV3_Engine",
+      "core_version": "v3.2.4"
+    },
+    {
+      "address": "0x0000002b11eec74c8bc07f704af67f53b3d910ef",
+      "chain_id": 1,
+      "name": "Raster",
+      "contract_type": "GenArt721CoreV3_Engine_Flex",
+      "core_version": "v3.2.5"
+    },
+    {
+      "address": "0x0000003601ae3f24a52323705fb36b8833071fd3",
+      "chain_id": 1,
+      "name": "Art Blocks Studio | 32",
+      "contract_type": "GenArt721CoreV3_Engine_Flex",
+      "core_version": "v3.2.5"
+    },
+    {
+      "address": "0x000000365ed3c9d1babc165c966992a6f5ecabf2",
+      "chain_id": 1,
+      "name": "Art Blocks Studio | 39",
+      "contract_type": "GenArt721CoreV3_Engine",
+      "core_version": "v3.2.4"
+    },
+    {
+      "address": "0x00000038610bc4c96ef657aa1bcb8902ae65c62a",
+      "chain_id": 1,
+      "name": "Art Blocks Studio | 35",
+      "contract_type": "GenArt721CoreV3_Engine_Flex",
+      "core_version": "v3.2.5"
+    },
+    {
+      "address": "0x000000399efc1ef4666a18b9c29325234ccea397",
+      "chain_id": 1,
+      "name": "Art Blocks Studio | 89",
+      "contract_type": "GenArt721CoreV3_Engine",
+      "core_version": "v3.2.4"
+    },
+    {
+      "address": "0x000000412217f67742376769695498074f007b97",
+      "chain_id": 1,
+      "name": "TRAME",
+      "contract_type": "GenArt721CoreV3_Engine_Flex",
+      "core_version": "v3.2.5"
+    },
+    {
+      "address": "0x00000041a2980e05cb4fbbbc735f17eff443b592",
+      "chain_id": 1,
+      "name": "Art Blocks Studio | 85",
+      "contract_type": "GenArt721CoreV3_Engine_Flex",
+      "core_version": "v3.2.5"
+    },
+    {
+      "address": "0x00000049ba17f5dc58818a6f644d25a96661327b",
+      "chain_id": 1,
+      "name": "Art Blocks Studio | 34",
+      "contract_type": "GenArt721CoreV3_Engine_Flex",
+      "core_version": "v3.2.5"
+    },
+    {
+      "address": "0x0000004f5c5a4390738b7dd9b662e95e44bf5bb7",
+      "chain_id": 1,
+      "name": "Art Blocks Studio | 45",
+      "contract_type": "GenArt721CoreV3_Engine_Flex",
+      "core_version": "v3.2.5"
+    },
+    {
+      "address": "0x00000053a75735169ad44f6760c11f3d3d3b3544",
+      "chain_id": 1,
+      "name": "Art Blocks Studio | 78",
+      "contract_type": "GenArt721CoreV3_Engine_Flex",
+      "core_version": "v3.2.5"
+    },
+    {
+      "address": "0x00000058642a13e644fa1571106e3d5e7580d491",
+      "chain_id": 1,
+      "name": "Art Blocks Studio | 58",
+      "contract_type": "GenArt721CoreV3_Engine_Flex",
+      "core_version": "v3.2.5"
+    },
+    {
+      "address": "0x000000606ee90cb15464eaba7c4028b549def16c",
+      "chain_id": 1,
+      "name": "Art Blocks Studio | 60",
+      "contract_type": "GenArt721CoreV3_Engine_Flex",
+      "core_version": "v3.2.5"
+    },
+    {
+      "address": "0x000000637fddcdd459b047897afb3ea46aa6f334",
+      "chain_id": 1,
+      "name": "Art Blocks Studio | 63",
+      "contract_type": "GenArt721CoreV3_Engine",
+      "core_version": "v3.2.4"
+    },
+    {
+      "address": "0x00000064c65bd96db98840d52b637136a520592e",
+      "chain_id": 1,
+      "name": "Art Blocks Studio | 64",
+      "contract_type": "GenArt721CoreV3_Engine_Flex",
+      "core_version": "v3.2.5"
+    },
+    {
+      "address": "0x000000654283cd976221b0e8358999591018cf1b",
+      "chain_id": 1,
+      "name": "Art Blocks Studio | 65",
+      "contract_type": "GenArt721CoreV3_Engine",
+      "core_version": "v3.2.4"
+    },
+    {
+      "address": "0x0000006693e685fcfc54c9d423b5e321b4a15192",
+      "chain_id": 1,
+      "name": "Art Blocks Studio | 66",
+      "contract_type": "GenArt721CoreV3_Engine_Flex",
+      "core_version": "v3.2.5"
+    },
+    {
+      "address": "0x0000009e3a0433ad9e9b3756b4120dd86949e2a0",
+      "chain_id": 1,
+      "name": "Art Blocks Studio | 36",
+      "contract_type": "GenArt721CoreV3_Engine",
+      "core_version": "v3.2.4"
+    },
+    {
+      "address": "0x0000009e962e6b00604d06e0bdd2cde0678cc89e",
+      "chain_id": 1,
+      "name": "Art Blocks Studio | 42",
+      "contract_type": "GenArt721CoreV3_Engine_Flex",
+      "core_version": "v3.2.5"
+    },
+    {
+      "address": "0x000000a35301fa5784e820f489003ffcffdc69a6",
+      "chain_id": 1,
+      "name": "Art Blocks Studio | 56",
+      "contract_type": "GenArt721CoreV3_Engine",
+      "core_version": "v3.2.4"
+    },
+    {
+      "address": "0x000000a4c880377d53f66dc721b147b0b34700c7",
+      "chain_id": 1,
+      "name": "Gifted",
+      "contract_type": "GenArt721CoreV3_Engine_Flex",
+      "core_version": "v3.2.5"
+    },
+    {
+      "address": "0x000000a6e6366baf7c98a2ab73d3df1092dd7bb0",
+      "chain_id": 1,
+      "name": "Art Blocks Studio | 11",
+      "contract_type": "GenArt721CoreV3_Engine",
+      "core_version": "v3.2.4"
+    },
+    {
+      "address": "0x000000adf65e202866a4a405ae9629e12a039a62",
+      "chain_id": 1,
+      "name": "Art Blocks Studio | 38",
+      "contract_type": "GenArt721CoreV3_Engine",
+      "core_version": "v3.2.4"
+    },
+    {
+      "address": "0x000000b394cac6057d87df835bea27844b3e2828",
+      "chain_id": 1,
+      "name": "Art Blocks Studio | 87",
+      "contract_type": "GenArt721CoreV3_Engine_Flex",
+      "core_version": "v3.2.5"
+    },
+    {
+      "address": "0x000000b862836c9bbae6cca68a0a2fe5ce497823",
+      "chain_id": 1,
+      "name": "Art Blocks Studio | 55",
+      "contract_type": "GenArt721CoreV3_Engine",
+      "core_version": "v3.2.4"
+    },
+    {
+      "address": "0x000000c356f75bb84e4a0032740291fe6d4cba95",
+      "chain_id": 1,
+      "name": "QOA",
+      "contract_type": "GenArt721CoreV3_Engine_Flex",
+      "core_version": "v3.2.3"
+    },
+    {
+      "address": "0x000000c3f849598a2e08150f91b1f54193d316e9",
+      "chain_id": 1,
+      "name": "Art Blocks Studio | 47",
+      "contract_type": "GenArt721CoreV3_Engine_Flex",
+      "core_version": "v3.2.5"
+    },
+    {
+      "address": "0x000000c9572b8a9a638f238510af4e90a4e365ee",
+      "chain_id": 1,
+      "name": "Art Blocks Studio | 81",
+      "contract_type": "GenArt721CoreV3_Engine",
+      "core_version": "v3.2.4"
+    },
+    {
+      "address": "0x000000cb8bad52b0d51f4190dd1c62ce1cde1e9d",
+      "chain_id": 1,
+      "name": "Art Blocks Studio | 13",
+      "contract_type": "GenArt721CoreV3_Engine_Flex",
+      "core_version": "v3.2.5"
+    },
+    {
+      "address": "0x000000d016f74fc6af2506ac4c1d984d9cfd65f2",
+      "chain_id": 1,
+      "name": "Art Blocks Studio | 14",
+      "contract_type": "GenArt721CoreV3_Engine",
+      "core_version": "v3.2.4"
+    },
+    {
+      "address": "0x000000d1dc20af3f7746dc61a4718edce700ced8",
+      "chain_id": 1,
+      "name": "OONA",
+      "contract_type": "GenArt721CoreV3_Engine_Flex",
+      "core_version": "v3.2.5"
+    },
+    {
+      "address": "0x000000dab303a194b3f55d4702b24740ad5a2f00",
+      "chain_id": 1,
+      "name": "Art Blocks Studio | 79",
+      "contract_type": "GenArt721CoreV3_Engine_Flex",
+      "core_version": "v3.2.5"
+    },
+    {
+      "address": "0x000000dc68934ed27fd11e32491cdf6717acaf21",
+      "chain_id": 1,
+      "name": "Art Blocks Studio | 88",
+      "contract_type": "GenArt721CoreV3_Engine_Flex",
+      "core_version": "v3.2.5"
+    },
+    {
+      "address": "0x000000e0808eae91ad4d81d2789b8caf89747b61",
+      "chain_id": 1,
+      "name": "Art Blocks Studio | 15",
+      "contract_type": "GenArt721CoreV3_Engine_Flex",
+      "core_version": "v3.2.5"
+    },
+    {
+      "address": "0x000000e6d2c9b681e3fd3c36590d5a2e1c56f4bc",
+      "chain_id": 1,
+      "name": "Art Blocks Studio | 48",
+      "contract_type": "GenArt721CoreV3_Engine_Flex",
+      "core_version": "v3.2.5"
+    },
+    {
+      "address": "0x000000eabb383dd7c899343ac2b47fe65ea18fcf",
+      "chain_id": 1,
+      "name": "Art Blocks Studio | 33",
+      "contract_type": "GenArt721CoreV3_Engine",
+      "core_version": "v3.2.4"
+    },
+    {
+      "address": "0x000000ec5a4564898f38c0af11cb5b0be5533832",
+      "chain_id": 1,
+      "name": "Art Blocks Studio | 37",
+      "contract_type": "GenArt721CoreV3_Engine",
+      "core_version": "v3.2.4"
+    },
+    {
+      "address": "0x000000ff2fbc55b982010b42e235cc2a0ce3250b",
+      "chain_id": 1,
+      "name": "Art Blocks Studio | 16",
+      "contract_type": "GenArt721CoreV3_Engine",
+      "core_version": "v3.2.4"
+    },
+    {
+      "address": "0x0000018afa7ca51648ed4b2b00c133005ea17115",
+      "chain_id": 1,
+      "name": "Art Blocks Studio | 18",
+      "contract_type": "GenArt721CoreV3_Engine",
+      "core_version": "v3.2.4"
+    },
+    {
+      "address": "0x000004c65ceb3182be720037fb001a6e1962acb4",
+      "chain_id": 1,
+      "name": "Art Blocks Studio | 83",
+      "contract_type": "GenArt721CoreV3_Engine",
+      "core_version": "v3.2.4"
+    },
+    {
+      "address": "0x00000599ba06d628daea74610094610027cca9b8",
+      "chain_id": 1,
+      "name": "Art Blocks Studio | 46",
+      "contract_type": "GenArt721CoreV3_Engine",
+      "core_version": "v3.2.4"
+    },
+    {
+      "address": "0x0000067b003116628bf6b300ecef8e42663a32c4",
+      "chain_id": 1,
+      "name": "Art Blocks Studio | 67",
+      "contract_type": "GenArt721CoreV3_Engine",
+      "core_version": "v3.2.4"
+    },
+    {
+      "address": "0x000009bb1740eea484f7db00000a9227e578bf96",
+      "chain_id": 1,
+      "name": "Art Blocks Studio | 9",
+      "contract_type": "GenArt721CoreV3_Engine_Flex",
+      "core_version": "v3.2.5"
+    },
+    {
+      "address": "0x000010efe35a97f37fcdfd00fd20006e5228650a",
+      "chain_id": 1,
+      "name": "Art Blocks Studio | 10",
+      "contract_type": "GenArt721CoreV3_Engine_Flex",
+      "core_version": "v3.2.5"
+    },
+    {
+      "address": "0x0000149485af7433f8da00419b931100d4aaef42",
+      "chain_id": 1,
+      "name": "Art Blocks Studio | 51",
+      "contract_type": "GenArt721CoreV3_Engine_Flex",
+      "core_version": "v3.2.5"
+    },
+    {
+      "address": "0x0000186a8ba59c7f63423b0e528e384000008ac9",
+      "chain_id": 1,
+      "name": "Art Blocks Studio | 41",
+      "contract_type": "GenArt721CoreV3_Engine_Flex",
+      "core_version": "v3.2.5"
+    },
+    {
+      "address": "0x000019bd92633e9e00dc08adb0d0dffb00a1fe2a",
+      "chain_id": 1,
+      "name": "Art Blocks Studio | 91",
+      "contract_type": "GenArt721CoreV3_Engine_Flex",
+      "core_version": "v3.2.5"
+    },
+    {
+      "address": "0x000023566874e414ef00008c5025782d0a9a3783",
+      "chain_id": 1,
+      "name": "Art Blocks Studio | 52",
+      "contract_type": "GenArt721CoreV3_Engine_Flex",
+      "core_version": "v3.2.5"
+    },
+    {
+      "address": "0x00002491b000aa008756652c87cc92d87e896f0f",
+      "chain_id": 1,
+      "name": "Maya Spirits",
+      "contract_type": "GenArt721CoreV3_Engine",
+      "core_version": "v3.2.4"
+    },
+    {
+      "address": "0x0000528a4a3859020a7970110c16941a00fadf00",
+      "chain_id": 1,
+      "name": "Art Blocks Studio | 84",
+      "contract_type": "GenArt721CoreV3_Engine",
+      "core_version": "v3.2.4"
+    },
+    {
+      "address": "0x000056c200618b979900c3f1ef9aef86f4c47eaa",
+      "chain_id": 1,
+      "name": "Art Blocks Studio | 80",
+      "contract_type": "GenArt721CoreV3_Engine",
+      "core_version": "v3.2.4"
+    },
+    {
+      "address": "0x000062aeea7af9b200d1b0a41c6e00c0c27e92ff",
+      "chain_id": 1,
+      "name": "Art Blocks Studio | 62",
+      "contract_type": "GenArt721CoreV3_Engine_Flex",
+      "core_version": "v3.2.5"
+    },
+    {
+      "address": "0x0000652240c8c945067775d290641000594d0090",
+      "chain_id": 1,
+      "name": "Art Blocks Studio | 40",
+      "contract_type": "GenArt721CoreV3_Engine_Flex",
+      "core_version": "v3.2.5"
+    },
+    {
+      "address": "0x000071ce00590014b26c63e039403fa1197cc446",
+      "chain_id": 1,
+      "name": "Art Blocks Studio | 59",
+      "contract_type": "GenArt721CoreV3_Engine_Flex",
+      "core_version": "v3.2.5"
+    },
+    {
+      "address": "0x00007bb2005fdd5774f78985e20040e2b1b99d07",
+      "chain_id": 1,
+      "name": "Art Blocks Studio | 43",
+      "contract_type": "GenArt721CoreV3_Engine_Flex",
+      "core_version": "v3.2.5"
+    },
+    {
+      "address": "0x00009f857c1ccd5ca0dc5900427fb8da00628099",
+      "chain_id": 1,
+      "name": "Art Blocks Studio | 90",
+      "contract_type": "GenArt721CoreV3_Engine",
+      "core_version": "v3.2.4"
+    },
+    {
+      "address": "0x0000a540c5b0b2b17100d63d8d066b00343020bb",
+      "chain_id": 1,
+      "name": "Art Blocks Studio | 49",
+      "contract_type": "GenArt721CoreV3_Engine",
+      "core_version": "v3.2.4"
+    },
+    {
+      "address": "0x0000b52017e1ec58f64171b6001518c07a9aec00",
+      "chain_id": 1,
+      "name": "Art Blocks Studio | 54",
+      "contract_type": "GenArt721CoreV3_Engine",
+      "core_version": "v3.2.4"
+    },
+    {
+      "address": "0x0000b82f38e839152b8f97487300263e0eae00f7",
+      "chain_id": 1,
+      "name": "Art Blocks Studio | 44",
+      "contract_type": "GenArt721CoreV3_Engine",
+      "core_version": "v3.2.4"
+    },
+    {
+      "address": "0x0000ec0076f0687e399b8d00570cdc70657e4101",
+      "chain_id": 1,
+      "name": "Art Blocks Studio | 57",
+      "contract_type": "GenArt721CoreV3_Engine_Flex",
+      "core_version": "v3.2.5"
+    },
+    {
+      "address": "0x0000ede7875f9ef0aae96100ceeb0040b85274e6",
+      "chain_id": 1,
+      "name": "Art Blocks Studio | 82",
+      "contract_type": "GenArt721CoreV3_Engine_Flex",
+      "core_version": "v3.2.5"
+    },
+    {
+      "address": "0x0000f6bc84ab98fbd8fce1f6d047965c723f0000",
+      "chain_id": 1,
+      "name": "Art Blocks Studio | 50",
+      "contract_type": "GenArt721CoreV3_Engine_Flex",
+      "core_version": "v3.2.5"
+    },
+    {
+      "address": "0x010be6545e14f1dc50256286d9920e833f809c6a",
+      "chain_id": 1,
+      "name": "LOM",
+      "contract_type": "GenArt721CoreV2_PBAB",
+      "core_version": null
+    },
+    {
+      "address": "0x02f518c529a0002e505000795d00c500eb00534a",
+      "chain_id": 1,
+      "name": "Art Blocks Studio | 74",
+      "contract_type": "GenArt721CoreV3_Engine",
+      "core_version": "v3.2.4"
+    },
+    {
+      "address": "0x059edd72cd353df5106d2b9cc5ab83a52287ac3a",
+      "chain_id": 1,
+      "name": null,
+      "contract_type": "GenArt721CoreV0",
+      "core_version": null
+    },
+    {
+      "address": "0x0a1bbd57033f57e7b6743621b79fcb9eb2ce3676",
+      "chain_id": 1,
+      "name": "MOMENT",
+      "contract_type": "GenArt721CoreV2_PBAB",
+      "core_version": null
+    },
+    {
+      "address": "0x0c3eb61e00400c3f1f1cc9002700a90020f05e00",
+      "chain_id": 1,
+      "name": "Art Blocks Studio | 29",
+      "contract_type": "GenArt721CoreV3_Engine_Flex",
+      "core_version": "v3.2.5"
+    },
+    {
+      "address": "0x0d08b807fec2e80dd40edbc4137e4542dc9c45bc",
+      "chain_id": 1,
+      "name": "Art Blocks Studio | 103",
+      "contract_type": "GenArt721CoreV3_Engine_Flex",
+      "core_version": "v3.2.10"
+    },
+    {
+      "address": "0x1353fd9d3dc70d1a18149c8fb2adb4fb906de4e8",
+      "chain_id": 1,
+      "name": "PROOF Blocks",
+      "contract_type": "GenArt721CoreV3_Engine_Flex",
+      "core_version": "v3.1.2"
+    },
+    {
+      "address": "0x13aae6f9599880edbb7d144bb13f1212cee99533",
+      "chain_id": 1,
+      "name": "Flutter",
+      "contract_type": "GenArt721CoreV2_PBAB",
+      "core_version": null
+    },
+    {
+      "address": "0x145789247973c5d612bf121e9e4eef84b63eb707",
+      "chain_id": 1,
+      "name": "Art Blocks x Bright Moments",
+      "contract_type": "GenArt721CoreV3_Engine",
+      "core_version": "v3.1.0"
+    },
+    {
+      "address": "0x16da6c9f17b525613950bfba89f7719dad35607d",
+      "chain_id": 1,
+      "name": "Art Blocks Studio | 101",
+      "contract_type": "GenArt721CoreV3_Engine",
+      "core_version": "v3.2.9"
+    },
+    {
+      "address": "0x1725dc55c1bd5200bf00566cf20000b10800c68e",
+      "chain_id": 1,
+      "name": "Art Blocks Studio | 20",
+      "contract_type": "GenArt721CoreV3_Engine_Flex",
+      "core_version": "v3.2.5"
+    },
+    {
+      "address": "0x18de6097ce5b5b2724c9cae6ac519917f3f178c0",
+      "chain_id": 1,
+      "name": "Plottables Flex",
+      "contract_type": "GenArt721CoreV2_PBAB",
+      "core_version": null
+    },
+    {
+      "address": "0x1b2bda74b15000e4c29c008bb600d4001e00d42d",
+      "chain_id": 1,
+      "name": "Art Blocks Studio | 77",
+      "contract_type": "GenArt721CoreV3_Engine",
+      "core_version": "v3.2.4"
+    },
+    {
+      "address": "0x1d0977e86c70eabb5c8fd98db1b08c6d60caa0c1",
+      "chain_id": 1,
+      "name": "TRAME x CPG",
+      "contract_type": "GenArt721CoreV2_PBAB",
+      "core_version": null
+    },
+    {
+      "address": "0x28f2d3805652fb5d359486dffb7d08320d403240",
+      "chain_id": 1,
+      "name": null,
+      "contract_type": "GenArt721CoreV2_PBAB",
+      "core_version": null
+    },
+    {
+      "address": "0x294fed5f1d3d30cfa6fe86a937dc3141eec8bc6d",
+      "chain_id": 1,
+      "name": "PROOF Blocks 2",
+      "contract_type": "GenArt721CoreV3_Engine_Flex",
+      "core_version": "v3.1.2"
+    },
+    {
+      "address": "0x2b3c48be4fb33b0724214aff12b086b0214f8f15",
+      "chain_id": 1,
+      "name": "CoinDesk",
+      "contract_type": "GenArt721CoreV2_PBAB",
+      "core_version": null
+    },
+    {
+      "address": "0x31a1bfb7ad3e3e6198d7a50012a4213594875d14",
+      "chain_id": 1,
+      "name": "Venus Over Manhattan",
+      "contract_type": "GenArt721CoreV3_Engine_Flex",
+      "core_version": "v3.1.3"
+    },
+    {
+      "address": "0x324bc45c9f257f177166be4f6e7d2f551b5a1f03",
+      "chain_id": 1,
+      "name": null,
+      "contract_type": "GenArt721CoreV3_Engine_Flex",
+      "core_version": "v3.1.3"
+    },
+    {
+      "address": "0x32d4be5ee74376e08038d652d4dc26e62c67f436",
+      "chain_id": 1,
+      "name": "VerticalCrypto Gen Art",
+      "contract_type": "GenArt721CoreV2_PBAB",
+      "core_version": null
+    },
+    {
+      "address": "0x381233d5584fdb42e46b4d9ba91876479aab7acd",
+      "chain_id": 1,
+      "name": "Bright Moments Finale",
+      "contract_type": "GenArt721CoreV3_Engine",
+      "core_version": "v3.1.4"
+    },
+    {
+      "address": "0x40cf4005847589bb8952ae3185dce03fdf0f2e2f",
+      "chain_id": 1,
+      "name": "Vertical Gen Art",
+      "contract_type": "GenArt721CoreV3_Engine_Flex",
+      "core_version": "v3.1.3"
+    },
+    {
+      "address": "0x440e1b5a98332bca7564dbffa4146f976ce75397",
+      "chain_id": 1,
+      "name": "Noble Generative",
+      "contract_type": "GenArt721CoreV3_Engine_Flex",
+      "core_version": "v3.1.4"
+    },
+    {
+      "address": "0x45e94b8c6087775c0074003b0056deec41008f00",
+      "chain_id": 1,
+      "name": "Art Blocks Studio | 27",
+      "contract_type": "GenArt721CoreV3_Engine_Flex",
+      "core_version": "v3.2.5"
+    },
+    {
+      "address": "0x4982d9a890bb286a0664a8af3b896be8403dcca4",
+      "chain_id": 1,
+      "name": "RFUNC",
+      "contract_type": "GenArt721CoreV3_Engine",
+      "core_version": "v3.1.4"
+    },
+    {
+      "address": "0x4ae867912a3d8e74e063516242ab6a7273f38cf9",
+      "chain_id": 1,
+      "name": null,
+      "contract_type": "GenArt721CoreV3_Engine_Flex",
+      "core_version": "v3.1.3"
+    },
+    {
+      "address": "0x4d928ab507bf633dd8e68024a1fb4c99316bbdf3",
+      "chain_id": 1,
+      "name": "Tennis Art",
+      "contract_type": "GenArt721CoreV2_PBAB",
+      "core_version": null
+    },
+    {
+      "address": "0x51144c0cb2b77dc4a2d6573211602ec27a343112",
+      "chain_id": 1,
+      "name": "Art Blocks Studio | 102",
+      "contract_type": "GenArt721CoreV3_Engine_Flex",
+      "core_version": "v3.2.10"
+    },
+    {
+      "address": "0x5306e34b7437200e0189cbc5f80b0990e49dcbe7",
+      "chain_id": 1,
+      "name": "Davis Editions",
+      "contract_type": "GenArt721CoreV3_Engine_Flex",
+      "core_version": "v3.1.4"
+    },
+    {
+      "address": "0x54a6356244059d5a50b97200a928f19a3682b669",
+      "chain_id": 1,
+      "name": "ITERATION-02",
+      "contract_type": "GenArt721CoreV2_PBAB",
+      "core_version": null
+    },
+    {
+      "address": "0x5d8efdc20272cd3e24a27dfe7f25795a107c99a2",
+      "chain_id": 1,
+      "name": "Unit London",
+      "contract_type": "GenArt721CoreV3_Engine_Flex",
+      "core_version": "v3.1.4"
+    },
+    {
+      "address": "0x5e581e596e9951bb00246e00a70030009b620054",
+      "chain_id": 1,
+      "name": "Art Blocks Studio | 26",
+      "contract_type": "GenArt721CoreV3_Engine_Flex",
+      "core_version": "v3.2.5"
+    },
+    {
+      "address": "0x5fdf5e6caf7b8b0f64c3612afd85e9407a7e1389",
+      "chain_id": 1,
+      "name": "Artwrld",
+      "contract_type": "GenArt721CoreV3_Engine_Flex",
+      "core_version": "v3.1.4"
+    },
+    {
+      "address": "0x62e37f664b5945629b6549a87f8e10ed0b6d923b",
+      "chain_id": 1,
+      "name": "TBOA",
+      "contract_type": "GenArt721CoreV2_PBAB",
+      "core_version": null
+    },
+    {
+      "address": "0x64780ce53f6e966e18a22af13a2f97369580ec11",
+      "chain_id": 1,
+      "name": "Art Blocks x Pace",
+      "contract_type": "GenArt721CoreV2_PBAB",
+      "core_version": null
+    },
+    {
+      "address": "0x67c0b53c8448a10f0eface978fc5be9892f33a2c",
+      "chain_id": 1,
+      "name": "Samsung Bespoke Collection",
+      "contract_type": "GenArt721CoreV2_PBAB",
+      "core_version": null
+    },
+    {
+      "address": "0x67ec6463ac3b5a03909ed429bc3278fd5d29cc8b",
+      "chain_id": 1,
+      "name": "Art Blocks Studio | 97",
+      "contract_type": "GenArt721CoreV3_Engine_Flex",
+      "core_version": "v3.2.10"
+    },
+    {
+      "address": "0x68c01cb4733a82a58d5e7bb31bddbff26a3a35d5",
+      "chain_id": 1,
+      "name": "newrafael.work",
+      "contract_type": "GenArt721CoreV2_PBAB",
+      "core_version": null
+    },
+    {
+      "address": "0x6ddefe5db20d79ec718a8960177beb388f7ebb8d",
+      "chain_id": 1,
+      "name": "Tender",
+      "contract_type": "GenArt721CoreV3_Engine",
+      "core_version": "v3.1.2"
+    },
+    {
+      "address": "0x70270e65bc37832ef845fa330c2b71501970dab9",
+      "chain_id": 1,
+      "name": "Art Blocks Studio | 93",
+      "contract_type": "GenArt721CoreV3_Engine",
+      "core_version": "v3.2.9"
+    },
+    {
+      "address": "0x70d16554e815859f7ba722cb4fa8a837378d400d",
+      "chain_id": 1,
+      "name": "Art Blocks Studio | 19",
+      "contract_type": "GenArt721CoreV3_Engine_Flex",
+      "core_version": "v3.2.5"
+    },
+    {
+      "address": "0x73b4797e2fd04fa42a9f3c9bcfbcee19374a9060",
+      "chain_id": 1,
+      "name": null,
+      "contract_type": "GenArt721CoreV3_Engine",
+      "core_version": "v3.1.0"
+    },
+    {
+      "address": "0x764eb084a2b2e88cc625961e921aad5026a618ba",
+      "chain_id": 1,
+      "name": null,
+      "contract_type": "GenArt721CoreV3_Engine_Flex",
+      "core_version": "v3.1.3"
+    },
+    {
+      "address": "0x77d4b54e91822e9799ab0900876d6b1cda752706",
+      "chain_id": 1,
+      "name": "Squiggle DAO Studios",
+      "contract_type": "GenArt721CoreV3_Engine_Flex",
+      "core_version": "v3.1.4"
+    },
+    {
+      "address": "0x78ac66980b3e5fec2ee5242ffd509f0aecbfaa8f",
+      "chain_id": 1,
+      "name": "Art Blocks Studio | 99",
+      "contract_type": "GenArt721CoreV3_Engine",
+      "core_version": "v3.2.9"
+    },
+    {
+      "address": "0x7c3ea2b7b3befa1115ab51c09f0c9f245c500b18",
+      "chain_id": 1,
+      "name": "Bright Moments Flex",
+      "contract_type": "GenArt721CoreV2_PBAB",
+      "core_version": null
+    },
+    {
+      "address": "0x7c78f67700e700b4005c8a3d920a1a99e6004800",
+      "chain_id": 1,
+      "name": "Art Blocks Studio | 72",
+      "contract_type": "GenArt721CoreV3_Engine",
+      "core_version": "v3.2.4"
+    },
+    {
+      "address": "0x84f12b499f050cb612403c75d9f2777a5995fe17",
+      "chain_id": 1,
+      "name": "Bright Moments II",
+      "contract_type": "GenArt721CoreV3_Engine",
+      "core_version": "v3.1.3"
+    },
+    {
+      "address": "0x8cdbd7010bd197848e95c1fd7f6e870aac9b0d3c",
+      "chain_id": 1,
+      "name": "AOI Engine",
+      "contract_type": "GenArt721CoreV3_Engine_Flex",
+      "core_version": "v3.1.3"
+    },
+    {
+      "address": "0x8ce22a649a0ea5008900740028007278038d0023",
+      "chain_id": 1,
+      "name": "Art Blocks Studio | 71",
+      "contract_type": "GenArt721CoreV3_Engine",
+      "core_version": "v3.2.4"
+    },
+    {
+      "address": "0x8db6f700a7c90000f92ac90084ad93a500f1eae0",
+      "chain_id": 1,
+      "name": "Art Blocks Studio | 30",
+      "contract_type": "GenArt721CoreV3_Engine_Flex",
+      "core_version": "v3.2.5"
+    },
+    {
+      "address": "0x9209070e1447018638e15b73dbee46bf085fcf5f",
+      "chain_id": 1,
+      "name": "Axiom Space3",
+      "contract_type": "GenArt721CoreV3_Engine",
+      "core_version": "v3.1.2"
+    },
+    {
+      "address": "0x935606f8a3a707e67e56408ba98ac286ab46fe2a",
+      "chain_id": 1,
+      "name": "Art Blocks Studio | 96",
+      "contract_type": "GenArt721CoreV3_Engine_Flex",
+      "core_version": "v3.2.10"
+    },
+    {
+      "address": "0x942bc2d3e7a589fe5bd4a5c6ef9727dfd82f5c8a",
+      "chain_id": 1,
+      "name": null,
+      "contract_type": "GenArt721CoreV3",
+      "core_version": "v3.0.1"
+    },
+    {
+      "address": "0x959d2f3caf19d20bdbb4e0a4f21ca8a815eddf65",
+      "chain_id": 1,
+      "name": "Tender Flex",
+      "contract_type": "GenArt721CoreV3_Engine_Flex",
+      "core_version": "v3.1.2"
+    },
+    {
+      "address": "0x9615b40941ebccd5d4f8f03941c85a2fb03e7160",
+      "chain_id": 1,
+      "name": "Art Blocks Studio | 95",
+      "contract_type": "GenArt721CoreV3_Engine",
+      "core_version": "v3.2.9"
+    },
+    {
+      "address": "0x96a83b48de94e130cf2aa81b28391c28ee33d253",
+      "chain_id": 1,
+      "name": "The Disruptive Gallery",
+      "contract_type": "GenArt721CoreV3_Engine_Flex",
+      "core_version": "v3.1.4"
+    },
+    {
+      "address": "0x9800005deb3cfaf80077dbe9b9004c0020c1d6c5",
+      "chain_id": 1,
+      "name": "Art Blocks Studio | 21",
+      "contract_type": "GenArt721CoreV3_Engine",
+      "core_version": "v3.2.4"
+    },
+    {
+      "address": "0x99a9b7c1116f9ceeb1652de04d5969cce509b069",
+      "chain_id": 1,
+      "name": null,
+      "contract_type": "GenArt721CoreV3",
+      "core_version": "v3.0.0"
+    },
+    {
+      "address": "0x9f01d15cde74bb479102e9b6fae1958a3c08b524",
+      "chain_id": 1,
+      "name": null,
+      "contract_type": "GenArt721CoreV3_Engine",
+      "core_version": "v3.2.9"
+    },
+    {
+      "address": "0x9f79e46a309f804aa4b7b53a1f72c69137427794",
+      "chain_id": 1,
+      "name": "Hodlers Projects",
+      "contract_type": "GenArt721CoreV3_Engine_Flex",
+      "core_version": "v3.1.2"
+    },
+    {
+      "address": "0xa06db200f4b6000000614704a68423a358005be7",
+      "chain_id": 1,
+      "name": "Art Blocks Studio | 61",
+      "contract_type": "GenArt721CoreV3_Engine",
+      "core_version": "v3.2.4"
+    },
+    {
+      "address": "0xa144fe940dd7aa85ff79c1c5e3ed35c163e313a8",
+      "chain_id": 1,
+      "name": "Art Blocks Studio | 105",
+      "contract_type": "GenArt721CoreV3_Engine_Flex",
+      "core_version": "v3.2.10"
+    },
+    {
+      "address": "0xa246bf4293e6c293450428bf804429e214a2adea",
+      "chain_id": 1,
+      "name": "Art Blocks Studio | 106",
+      "contract_type": "GenArt721CoreV3_Engine_Flex",
+      "core_version": "v3.2.10"
+    },
+    {
+      "address": "0xa319c382a702682129fcbf55d514e61a16f97f9c",
+      "chain_id": 1,
+      "name": "Plottables",
+      "contract_type": "GenArt721CoreV2_PBAB",
+      "core_version": null
+    },
+    {
+      "address": "0xa73300003e020c436a67809e9300301600013000",
+      "chain_id": 1,
+      "name": "Art Blocks Studio | 23",
+      "contract_type": "GenArt721CoreV3_Engine_Flex",
+      "core_version": "v3.2.5"
+    },
+    {
+      "address": "0xa7d8d9ef8d8ce8992df33d8b8cf4aebabd5bd270",
+      "chain_id": 1,
+      "name": null,
+      "contract_type": "GenArt721CoreV1",
+      "core_version": null
+    },
+    {
+      "address": "0xa86cd4ecebd96085fce4697614d30600803455c4",
+      "chain_id": 1,
+      "name": "GAZELL.iO",
+      "contract_type": "GenArt721CoreV3_Engine_Flex",
+      "core_version": "v3.1.3"
+    },
+    {
+      "address": "0xaa00b2b2db36b8f8004a9aa96f0012005d92b300",
+      "chain_id": 1,
+      "name": "Art Blocks Studio | 76",
+      "contract_type": "GenArt721CoreV3_Engine_Flex",
+      "core_version": "v3.2.5"
+    },
+    {
+      "address": "0xab00000000002ade39f58f9d8278a31574ffbe77",
+      "chain_id": 1,
+      "name": "artblocks-curated-flex-onchain",
+      "contract_type": "GenArt721CoreV3_Engine_Flex",
+      "core_version": "v3.2.7"
+    },
+    {
+      "address": "0xab0000000000aa06f89b268d604a9c1c41524ac6",
+      "chain_id": 1,
+      "name": "artblocks",
+      "contract_type": "GenArt721CoreV3_Engine",
+      "core_version": "v3.2.6"
+    },
+    {
+      "address": "0xab949cb7d6f267fbd6bc75796c6d11b785ece68f",
+      "chain_id": 1,
+      "name": "Elsewhere",
+      "contract_type": "GenArt721CoreV3_Engine",
+      "core_version": "v3.1.4"
+    },
+    {
+      "address": "0xababababab20053426ad1c782de9ea8444358070",
+      "chain_id": 1,
+      "name": "artblocks-explorations-flex-onchain",
+      "contract_type": "GenArt721CoreV3_Engine_Flex",
+      "core_version": "v3.2.8"
+    },
+    {
+      "address": "0xac521ea7a83a3bc3f9f1e09f8300a6301743fb1f",
+      "chain_id": 1,
+      "name": "PlottablesV3",
+      "contract_type": "GenArt721CoreV3_Engine",
+      "core_version": "v3.1.4"
+    },
+    {
+      "address": "0xaf40b66072fe00cacf5a25cd1b7f1688cde20f2f",
+      "chain_id": 1,
+      "name": "Grailers",
+      "contract_type": "GenArt721CoreV3_Engine_Flex",
+      "core_version": "v3.1.3"
+    },
+    {
+      "address": "0xb265cb2ee300007d8889440041f900f109ae00c9",
+      "chain_id": 1,
+      "name": "Art Blocks Studio | 73",
+      "contract_type": "GenArt721CoreV3_Engine",
+      "core_version": "v3.2.4"
+    },
+    {
+      "address": "0xb3526a6400260078517643cfd8490078803e0000",
+      "chain_id": 1,
+      "name": "Art Blocks Studio | 31",
+      "contract_type": "GenArt721CoreV3_Engine",
+      "core_version": "v3.2.4"
+    },
+    {
+      "address": "0xb8e8bec0891a7519091e18590e0b60221853dd2b",
+      "chain_id": 1,
+      "name": "Nnumber",
+      "contract_type": "GenArt721CoreV3_Engine_Flex",
+      "core_version": "v3.1.4"
+    },
+    {
+      "address": "0xbb5471c292065d3b01b2e81e299267221ae9a250",
+      "chain_id": 1,
+      "name": "Verse",
+      "contract_type": "GenArt721CoreV2_PBAB",
+      "core_version": null
+    },
+    {
+      "address": "0xbdde08bd57e5c9fd563ee7ac61618cb2ecdc0ce0",
+      "chain_id": 1,
+      "name": "CryptoCitizens",
+      "contract_type": "GenArt721CoreV2_PBAB",
+      "core_version": null
+    },
+    {
+      "address": "0xc04e0000726ed7c5b9f0045bc0c4806321bc6c65",
+      "chain_id": 1,
+      "name": "XCORE",
+      "contract_type": "GenArt721CoreV3_Engine_Flex",
+      "core_version": "v3.2.5"
+    },
+    {
+      "address": "0xc3cfc7000084f5987800f024571236000a010022",
+      "chain_id": 1,
+      "name": "Art Blocks Studio | 24",
+      "contract_type": "GenArt721CoreV3_Engine_Flex",
+      "core_version": "v3.2.5"
+    },
+    {
+      "address": "0xc443588d22fb0f8dab928e52014cc23d2df70743",
+      "chain_id": 1,
+      "name": "FAB DAO",
+      "contract_type": "GenArt721CoreV3_Engine",
+      "core_version": "v3.1.2"
+    },
+    {
+      "address": "0xc74ec888104842277fa1b74e1c3d415eb673009f",
+      "chain_id": 1,
+      "name": "Shiseido x ABE",
+      "contract_type": "GenArt721CoreV3_Engine_Flex",
+      "core_version": "v3.1.4"
+    },
+    {
+      "address": "0xceb0c691553c416fe68bc740f769b12064b75e9a",
+      "chain_id": 1,
+      "name": "Art Blocks Studio | 107",
+      "contract_type": "GenArt721CoreV3_Engine",
+      "core_version": "v3.2.9"
+    },
+    {
+      "address": "0xcfa6a2d5bc2a77c0cdd3046e09da21e45d1df0f1",
+      "chain_id": 1,
+      "name": "Art Blocks Studio | 104",
+      "contract_type": "GenArt721CoreV3_Engine_Flex",
+      "core_version": "v3.2.10"
+    },
+    {
+      "address": "0xd00495689d5161c511882364e0c342e12dcc5f08",
+      "chain_id": 1,
+      "name": "Hodlers Collector Pass",
+      "contract_type": "GenArt721CoreV3_Engine_Flex",
+      "core_version": "v3.1.2"
+    },
+    {
+      "address": "0xd0b1b81c2821abe2adbbae79db7037a5c1f72a94",
+      "chain_id": 1,
+      "name": "Art Blocks Studio | 108",
+      "contract_type": "GenArt721CoreV3_Engine_Flex",
+      "core_version": "v3.2.10"
+    },
+    {
+      "address": "0xd10e3dee203579fcee90ed7d0bdd8086f7e53beb",
+      "chain_id": 1,
+      "name": "ARTCODE",
+      "contract_type": "GenArt721CoreV2_PBAB",
+      "core_version": null
+    },
+    {
+      "address": "0xd40030fd1d00f1a9944462ff0025e9c8d0003500",
+      "chain_id": 1,
+      "name": "Art Blocks Studio | 22",
+      "contract_type": "GenArt721CoreV3_Engine",
+      "core_version": "v3.2.4"
+    },
+    {
+      "address": "0xd9b7ec74c06c558a59afde6a16e614950730f44d",
+      "chain_id": 1,
+      "name": "r4v3n Art Blocks Engine",
+      "contract_type": "GenArt721CoreV3_Engine_Flex",
+      "core_version": "v3.1.3"
+    },
+    {
+      "address": "0xdcddfc0003483509ab0066006e00c3386914eb00",
+      "chain_id": 1,
+      "name": "Art Blocks Studio | 75",
+      "contract_type": "GenArt721CoreV3_Engine",
+      "core_version": "v3.2.4"
+    },
+    {
+      "address": "0xdd6800ac7a54331b00000080bbd1ef463475005b",
+      "chain_id": 1,
+      "name": "Art Blocks Studio | 25",
+      "contract_type": "GenArt721CoreV3_Engine",
+      "core_version": "v3.2.4"
+    },
+    {
+      "address": "0xe034bb2b1b9471e11cf1a0a9199a156fb227aa5d",
+      "chain_id": 1,
+      "name": "Sothebys Gen Art",
+      "contract_type": "GenArt721CoreV3_Engine_Flex",
+      "core_version": "v3.1.3"
+    },
+    {
+      "address": "0xe18f2247fe4a69c0e2210331b0604f6d10fece9e",
+      "chain_id": 1,
+      "name": "glitch Gallery",
+      "contract_type": "GenArt721CoreV3_Engine_Flex",
+      "core_version": "v3.1.4"
+    },
+    {
+      "address": "0xe891abd8d836915f1269fcaab8a0527d9272938f",
+      "chain_id": 1,
+      "name": "Art Blocks Studio | 100",
+      "contract_type": "GenArt721CoreV3_Engine_Flex",
+      "core_version": "v3.2.10"
+    },
+    {
+      "address": "0xe9e108b3085b2c9ebb32b65d8c452853ed40c47b",
+      "chain_id": 1,
+      "name": "Art Blocks Studio | 94",
+      "contract_type": "GenArt721CoreV3_Engine",
+      "core_version": "v3.2.9"
+    },
+    {
+      "address": "0xea46ca9eaf449b8c16305887f66019e9b1c72392",
+      "chain_id": 1,
+      "name": "Light House",
+      "contract_type": "GenArt721CoreV3_Engine_Flex",
+      "core_version": "v3.1.4"
+    },
+    {
+      "address": "0xea698596b6009a622c3ed00dd5a8b5d1cae4fc36",
+      "chain_id": 1,
+      "name": "Art Blocks x Pace (V3)",
+      "contract_type": "GenArt721CoreV3_Engine",
+      "core_version": "v3.1.0"
+    },
+    {
+      "address": "0xeafe7b73a3cfa804b761debcf077d4574588dfe7",
+      "chain_id": 1,
+      "name": "EndaoMint",
+      "contract_type": "GenArt721CoreV2_PBAB",
+      "core_version": null
+    },
+    {
+      "address": "0xedd5c3d8e8fc1e88b93a98282b8ccfd953c483a4",
+      "chain_id": 1,
+      "name": "Vertu Fine Art",
+      "contract_type": "GenArt721CoreV3_Engine_Flex",
+      "core_version": "v3.1.3"
+    },
+    {
+      "address": "0xf03511ec774289da497cdb2070df4c711580ff7a",
+      "chain_id": 1,
+      "name": "HVOID",
+      "contract_type": "GenArt721CoreV3_Engine_Flex",
+      "core_version": "v3.1.4"
+    },
+    {
+      "address": "0xf3cc21a4009093b45b5d005ce7a0a80000580056",
+      "chain_id": 1,
+      "name": "Art Blocks Studio | 28",
+      "contract_type": "GenArt721CoreV3_Engine_Flex",
+      "core_version": "v3.2.5"
+    },
+    {
+      "address": "0xff124d975c7792e706552b18ec9da24781751cab",
+      "chain_id": 1,
+      "name": "Modern Muse",
+      "contract_type": "GenArt721CoreV2_PBAB",
+      "core_version": null
+    },
+    {
+      "address": "0xc675250e2d32780f44319b66d34d9b69784e4d86",
+      "chain_id": 360,
+      "name": "DEV TEST SHAPE | ENGINE FLEX",
+      "contract_type": "GenArt721CoreV3_Engine_Flex",
+      "core_version": "v3.2.10"
+    },
+    {
+      "address": "0x0000000080d04343d60d06e1a36aaf46c9242805",
+      "chain_id": 8453,
+      "name": "Generative Goods",
+      "contract_type": "GenArt721CoreV3_Engine_Flex",
+      "core_version": "v3.2.5"
+    },
+    {
+      "address": "0x000000059b9f7949a6427fd556cce376f84be656",
+      "chain_id": 8453,
+      "name": "Gifted Base",
+      "contract_type": "GenArt721CoreV3_Engine_Flex",
+      "core_version": "v3.2.5"
+    },
+    {
+      "address": "0x0000005cb45d63e973d9bf3ea82d35fff6dc5b38",
+      "chain_id": 8453,
+      "name": "Scannables",
+      "contract_type": "GenArt721CoreV3_Engine_Flex",
+      "core_version": "v3.2.5"
+    },
+    {
+      "address": "0x0061b590a42433392bc76b3f3fe1404a5df449c9",
+      "chain_id": 8453,
+      "name": "DEV TEST | FLEX",
+      "contract_type": "GenArt721CoreV3_Engine_Flex",
+      "core_version": "v3.2.5"
+    },
+    {
+      "address": "0x4e383fe6245035d495e0d18dce76446faa527d6c",
+      "chain_id": 8453,
+      "name": "Marfa Weekend Poster",
+      "contract_type": "GenArt721CoreV3_Engine_Flex",
+      "core_version": "v3.2.10"
+    },
+    {
+      "address": "0xa39abc16d7b6cfbf2cb1d02de65a0b28101cdad1",
+      "chain_id": 8453,
+      "name": "DEV TEST | ENGINE",
+      "contract_type": "GenArt721CoreV3_Engine",
+      "core_version": "v3.2.4"
+    },
+    {
+      "address": "0x0000000098ddf2a817189a189a7254c4d16e0ab7",
+      "chain_id": 42161,
+      "name": "Gifted Arbitrum",
+      "contract_type": "GenArt721CoreV3_Engine_Flex",
+      "core_version": "v3.2.5"
+    },
+    {
+      "address": "0x00000002b3b9e963e0d36c39aa80383ae713c62b",
+      "chain_id": 42161,
+      "name": "Generative Goods Arbitrum",
+      "contract_type": "GenArt721CoreV3_Engine_Flex",
+      "core_version": "v3.2.5"
+    },
+    {
+      "address": "0x0000000fae63d15270aafe9e08a71cd28079572d",
+      "chain_id": 42161,
+      "name": "In Resonance Arbitrum",
+      "contract_type": "GenArt721CoreV3_Engine_Flex",
+      "core_version": "v3.2.5"
+    },
+    {
+      "address": "0x0d39ab55664007ff2d089a25480f169c6d0597bb",
+      "chain_id": 42161,
+      "name": "r4v3n l2",
+      "contract_type": "GenArt721CoreV3_Engine_Flex",
+      "core_version": "v3.1.4"
+    },
+    {
+      "address": "0x47a91457a3a1f700097199fd63c039c4784384ab",
+      "chain_id": 42161,
+      "name": "Prohibition",
+      "contract_type": "GenArt721CoreV3_Engine_Flex",
+      "core_version": "v3.1.3"
+    },
+    {
+      "address": "0x7497909537ce00fdda93c12d5083d8647c593c67",
+      "chain_id": 42161,
+      "name": "Concentric Art",
+      "contract_type": "GenArt721CoreV3_Engine",
+      "core_version": "v3.1.3"
+    },
+    {
+      "address": "0x7affa651e94fdaa4459202a453de209c359e6f0e",
+      "chain_id": 42161,
+      "name": "DEV TEST | ENGINE FLEX | v3.2.10",
+      "contract_type": "GenArt721CoreV3_Engine_Flex",
+      "core_version": "v3.2.10"
+    },
+    {
+      "address": "0x8c2111b174fb454fdac4673defa82cbe337ae706",
+      "chain_id": 42161,
+      "name": "Art Blocks Studio Arbitrum | 0",
+      "contract_type": "GenArt721CoreV3_Engine_Flex",
+      "core_version": "v3.2.1"
+    },
+    {
+      "address": "0xaaac8ba5bd685d81ac7eed28d913a73c3be526d5",
+      "chain_id": 42161,
+      "name": "DEV TEST | ENGINE FLEX",
+      "contract_type": "GenArt721CoreV3_Engine_Flex",
+      "core_version": "v3.2.5"
+    },
+    {
+      "address": "0xd168b708a5385a1cb50cf13f5fbd63149ccc08ab",
+      "chain_id": 42161,
+      "name": "IYK",
+      "contract_type": "GenArt721CoreV3_Engine_Flex",
+      "core_version": "v3.1.4"
+    },
+    {
+      "address": "0xd1d1222f6d3e4f64db1c025ecd0b314db8449ac4",
+      "chain_id": 42161,
+      "name": "Light House Arbitrum",
+      "contract_type": "GenArt721CoreV3_Engine_Flex",
+      "core_version": "v3.1.4"
+    },
+    {
+      "address": "0xfb2fc7ee917fb2fa0ab25542fa2e3e1351df5523",
+      "chain_id": 42161,
+      "name": "Art Blocks Studio Arbitrum | 1",
+      "contract_type": "GenArt721CoreV3_Engine_Flex",
+      "core_version": "v3.2.1"
+    }
+  ]
+}

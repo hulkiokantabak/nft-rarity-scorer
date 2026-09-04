@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { parseHTML } from 'linkedom';
+import { makeFixture, project as abProject, V1, FLEX, FAKE } from '../fixtures/artblocks.js';
 
 const html = await readFile(new URL('../index.html', import.meta.url), 'utf8');
 const { window, document } = parseHTML(html);
@@ -15,13 +16,17 @@ Object.defineProperty(window.HTMLSelectElement.prototype, 'value', { configurabl
 window.location = location;
 let calls = [], failListings = false, omitted = false, failTraits = false, failCollection = false, cancelOwner = false, switchModeDuringFetch = false;
 let fullCorpus = false, failScan = false, numericTraits = false, omitDetailTraits = false;
+let abOptions = {}, abFixture = makeFixture(abOptions);
 const address = '0x' + '1'.repeat(40), contracts = ['0x' + 'a'.repeat(40), '0x' + 'b'.repeat(40)];
 const nft = (contract, id = '0') => ({ identifier: id, contract, collection: 'fixture', name: contract === contracts[0] ? 'Gold zero' : 'Blue zero', image_url: '', traits: [{ trait_type: 'Color', value: contract === contracts[0] ? 'Gold' : 'Blue' }, ...(numericTraits ? [{ trait_type: 'Level', value: contract === contracts[0] && id === '0' ? 2 : 1 }] : [])], owners: cancelOwner ? [{ address: '0x' + '3'.repeat(40) }] : [], rarity: { rank: contract === contracts[0] ? 1 : 90 }, opensea_url: `https://opensea.io/item/ethereum/${contract}/${id}` });
 const listing = (contract, value, currency = 'ETH') => ({ status: 'ACTIVE', chain: 'ethereum', asset: { contract, identifier: '0' }, price: { current: { value, decimals: 0, currency } } });
 globalThis.fetch = async (url, options = {}) => {
   const path = new URL(url).pathname; calls.push({ path, options });
   let body;
-  if (path.endsWith('/nfts/batch')) {
+  if (url === 'https://data.artblocks.io/v1/graphql') {
+    const { query, variables } = JSON.parse(options.body);
+    body = { data: await abFixture.request(query, variables, options.signal) };
+  } else if (path.endsWith('/nfts/batch')) {
     const ids = JSON.parse(options.body).identifiers;
     body = { nfts: ids.filter((_, i) => !omitted || i !== 0).map(i => nft(i.contract_address, i.token_id)).reverse() };
     if (omitDetailTraits) body.nfts.forEach(n => { delete n.traits; });
@@ -54,6 +59,7 @@ const input = (id, value) => { document.getElementById(id).value = value; };
 const reset = () => {
   calls = []; failListings = false; omitted = false; failTraits = false; failCollection = false; cancelOwner = false; switchModeDuringFetch = false;
   fullCorpus = false; failScan = false; numericTraits = false; omitDetailTraits = false;
+  abOptions = {}; abFixture = makeFixture(abOptions);
   app.applyImportedConfig({ v: 2, slug: 'fixture', mode: 'listed', standard_tiers: { thresholds: [2, 5, 20], points: [7, 3, 1] }, score_missing: false, score_pairs: false });
   input('apiKey', 'test-key-not-real');
 };
@@ -66,6 +72,7 @@ test('initial markup wires every app event handler and labels fixed inputs', () 
   }
   assert.equal(document.querySelectorAll('[role="tab"]').length, 3);
   assert.equal(document.querySelectorAll('script[src^="//"]').length, 0);
+  assert.match(document.querySelector('meta[http-equiv="Content-Security-Policy"]').content, /connect-src https:\/\/api\.opensea\.io https:\/\/data\.artblocks\.io;/);
 });
 test('no-key demo works without network and builds cards/table', () => {
   reset(); calls = []; input('apiKey', ''); app.loadDemo();
@@ -157,8 +164,9 @@ test('missing-data checkbox re-scores cached missing metadata on and off with cl
 });
 
 test('Portfolio respects the missing-data opt-in without inventing measured coverage', async () => {
-  reset(); omitDetailTraits = true; numericTraits = true;
+  reset(); abOptions.unknownFrequency = true;
   input('walletInput', address); document.getElementById('scoreMissing').checked = true; await app.analyzePortfolio();
+  assert.equal(app.getDisplayItems().length, 3);
   assert.ok(app.getDisplayItems().every(i => i.assumedTraits === 1 && i.assumedPoints === 7));
   assert.ok(app.getDisplayItems().every(i => i.coverage < 1));
 });
@@ -172,8 +180,51 @@ test('portfolio uses current zero points and canonical account resolver, not cac
   reset(); input('points1', '0'); input('walletInput', 'fixture.eth'); await app.analyzePortfolio();
   assert.ok(calls.some(c => c.path === '/api/v2/accounts/resolve/fixture.eth'));
   assert.ok(app.getDisplayItems().every(i => i.totalScore === 0));
-  assert.equal(app.getDisplayItems().length, 2);
-  assert.match(document.getElementById('portfolioSummary').textContent, /never converted into trait points/);
+  assert.equal(app.getDisplayItems().length, 3);
+  assert.match(document.getElementById('portfolioSummary').textContent, /verified Engine\/Flex/);
+});
+
+test('address Portfolio needs no key, includes verified Engine and never fetches broad NFTs', async () => {
+  reset(); input('apiKey', ''); input('walletInput', address); await app.analyzePortfolio();
+  assert.equal(document.getElementById('errorMsg').classList.contains('visible'), false, document.getElementById('errorMsg').textContent);
+  const items = app.getDisplayItems(); assert.equal(items.length, 3);
+  assert.ok(items.some(i => i.contractAddress === FLEX));
+  assert.ok(calls.every(c => c.path === '/v1/graphql' && !Object.hasOwn(c.options.headers, 'X-API-KEY')));
+  assert.match(document.getElementById('provenance').textContent, /grouped by chain, contract and project/);
+  assert.equal(document.getElementById('statAvg').textContent, '—');
+  assert.ok(items.every(i => i.scoreColor === 'var(--accent)'));
+  const links = [...document.querySelectorAll('#resultsGrid a[href*="/collection/"]')].map(a => a.getAttribute('href'));
+  assert.ok(links.length > 0); assert.ok(links.every(href => /\/collection\/project-\d+$/.test(href)));
+});
+
+test('Portfolio does not enforce old 25-project limit or trust Art Blocks names', async () => {
+  reset(); const projects = Array.from({ length: 28 }, (_, i) => abProject(V1, i));
+  projects.push(abProject(FAKE, 0, 1, { name: 'Art Blocks Curated' }));
+  abFixture = makeFixture({ projects }); input('walletInput', address); await app.analyzePortfolio();
+  assert.equal(app.getDisplayItems().length, 28);
+  assert.ok(app.getDisplayItems().every(i => i.contractAddress === V1));
+  assert.match(document.getElementById('portfolioSummary').textContent, /1 records failed/);
+});
+
+test('unscored Portfolio records remain in their own project under both sort directions', async () => {
+  reset(); input('walletInput', address); await app.analyzePortfolio();
+  const values = [
+    { collectionSlug: 'b', totalScore: 20, scoringMethod: 'Custom tiers' },
+    { collectionSlug: 'a', totalScore: 0, scoringMethod: 'Unscored' },
+    { collectionSlug: 'a', totalScore: 7, scoringMethod: 'Custom tiers' }
+  ];
+  for (const dir of ['asc', 'desc']) assert.deepEqual([...values].sort(app.makeSortFn('score', dir)).map(i => i.collectionSlug), ['a', 'a', 'b']);
+});
+
+test('Portfolio cancellation and catalog failure cannot restore previous broad results', async () => {
+  reset(); app.loadDemo(); input('walletInput', address);
+  abOptions.fail = query => query.includes('ArtBlocksContracts'); await app.analyzePortfolio();
+  assert.equal(app.getDisplayItems().length, 0);
+  assert.equal(document.getElementById('errorMsg').classList.contains('visible'), true);
+  reset(); input('walletInput', address);
+  abOptions.fail = query => { if (query.includes('ArtBlocksHoldings')) window.cancelAnalysis(); return false; };
+  await app.analyzePortfolio(); assert.equal(app.getDisplayItems().length, 0);
+  assert.match(document.getElementById('errorMsg').textContent, /cancelled/);
 });
 test('config import is atomic; zero weights reset when absent', () => {
   reset(); app.loadDemo();
