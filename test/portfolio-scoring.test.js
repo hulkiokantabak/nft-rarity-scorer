@@ -5,9 +5,9 @@ import { countTraits, buildPairCounts, traitKey, scoreNFT, itemKey } from '../co
 import { projectRanksForHoldings } from '../rankings.js';
 import { bonusFixture, project, token } from '../fixtures/artblocks.js';
 
-const config = { tiers: [{ name: 'rare', threshold: 2, points: 7 }, { name: 'uncommon', threshold: 5, points: 3 }, { name: 'scarce', threshold: 20, points: 1 }], weights: {}, scoreMissing: false, scorePairs: false, missingBonus: 1.5, comboBonus: 2 };
+const config = { tiers: [{ name: 'rare', threshold: 2, points: 7 }, { name: 'uncommon', threshold: 5, points: 3 }, { name: 'scarce', threshold: 20, points: 1 }], weights: {}, scoreMissing: true, scorePairs: true, missingBonus: 1.5, comboBonus: 2 };
 
-test('complete project baseline forces both bonuses, preserves official distributions and measures absence', async () => {
+test('complete project baseline applies both selected bonuses, preserves official distributions and measures absence', async () => {
   const f = bonusFixture(), p = f.projects[0];
   const scored = await scoreArtBlocksPopulation(f.population, p, config);
   assert.equal(scored.population[0].totalScore, 25); assert.equal(scored.population[99].totalScore, 14);
@@ -17,6 +17,13 @@ test('complete project baseline forces both bonuses, preserves official distribu
   assert.deepEqual(Object.entries(scored.counts), Object.entries(artBlocksTraitCounts(p)));
   const ranks = projectRanksForHoldings([scored.population[0]], scored.population, 100);
   assert.deepEqual([ranks.get(itemKey(scored.population[0])).rank, ranks.get(itemKey(scored.population[0])).total], [1, 100]);
+});
+
+test('unselected combinations do not consume pair-work budget or contribute to scores', async () => {
+  const f = bonusFixture();
+  const scored = await scoreArtBlocksPopulation(f.population, f.projects[0], { ...config, scorePairs: false }, { maxPairWork: 0 });
+  assert.equal(scored.population[0].totalScore, 11); assert.equal(scored.population[0].pairsAvailable, false);
+  assert.equal(scored.config.scorePairs, false);
 });
 
 test('unsupported fields cannot establish measured absence or pairs; scalar siblings remain measured', async () => {

@@ -1,4 +1,4 @@
-import { itemKey } from './core.js?v=1.5.0';
+import { itemKey } from './core.js?v=1.6.0';
 
 const positiveInteger = n => Number.isSafeInteger(n) && n > 0;
 export const hasScore = item => item.scoringMethod !== 'Unscored' && Number.isFinite(item.totalScore);

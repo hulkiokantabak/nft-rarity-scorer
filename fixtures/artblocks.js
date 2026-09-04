@@ -5,6 +5,7 @@ export const V0 = '0x059edd72cd353df5106d2b9cc5ab83a52287ac3a';
 export const V1 = '0xa7d8d9ef8d8ce8992df33d8b8cf4aebabd5bd270';
 export const FLEX = '0x' + 'b'.repeat(40);
 export const FAKE = '0x' + 'f'.repeat(40);
+export const tag = name => ({ tag_name: name, tag: { name, display_name: name, status: 'public', grouping_name: 'heritage', type: 'project' } });
 export const registry = [
   { chain_id: 1, address: V0, name: null, contract_type: 'GenArt721CoreV0', core_version: null },
   { chain_id: 1, address: V1, name: 'Art Blocks', contract_type: 'GenArt721CoreV1', core_version: null },
@@ -13,6 +14,9 @@ export const registry = [
 export const project = (contract = V1, id = 1, chain = 1, extra = {}) => ({
   id: `${contract}-${id}`, project_id: String(id), chain_id: chain, contract_address: contract,
   name: `Project ${id}`, invocations: 100, opensea_slug: `project-${id}`,
+  artist_name: `Artist ${id}`, vertical_name: contract === V1 ? 'curated' : 'flex',
+  vertical: { name: contract === V1 ? 'curated' : 'flex', display_name: contract === V1 ? 'Curated' : 'Flex' },
+  tags: contract === V1 ? [tag('ab500'), tag('curated series 3')] : [], series_id: contract === V1 ? 3 : null,
   features: { feature_value_counts: { Color: { Gold: 1, Blue: 99 } }, features_generating: false }, ...extra
 });
 export const token = (p = project(), invocation = 0, extra = {}) => {
@@ -31,6 +35,14 @@ export function makeFixture(options = {}) {
     signal?.throwIfAborted(); calls.push({ query, variables });
     if (options.cancelOn && query.includes(options.cancelOn)) { options.controller.abort(); signal?.throwIfAborted(); }
     if (options.fail && options.fail(query, variables)) throw new Error('Synthetic API failure');
+    if (query.includes('ArtBlocksTokenProjectLabels')) {
+      const rows = variables.ids.map(id => {
+        const [contract, tokenId] = id.split('-');
+        const p = projects.find(p => p.chain_id === variables.chain && p.contract_address === contract && p.project_id === (BigInt(tokenId) / 1000000n).toString());
+        return p && BigInt(tokenId) % 1000000n < BigInt(p.invocations) ? token(p, Number(BigInt(tokenId) % 1000000n)) : null;
+      }).filter(Boolean);
+      return { tokens_metadata: options.labelRows || rows };
+    }
     if (query.includes('ArtBlocksProjectPopulation')) {
       const p = projects.find(p => p.chain_id === variables.chain && p.id === variables.project);
       const population = options.population || Array.from({ length: p.invocations }, (_, i) => token(p, i, { features: { Color: i === 0 ? 'Gold' : 'Blue', ...(options.unknownFrequency ? { Level: 2 } : {}) }, updated_at: '2026-09-04T00:00:00Z' }));

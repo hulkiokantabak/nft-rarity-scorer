@@ -1,5 +1,5 @@
 // Deterministic, DOM-free scoring. This is a custom heuristic, not OpenRarity.
-export const ENGINE_VERSION = '1.5.0';
+export const ENGINE_VERSION = '1.6.0';
 export const traitKey = (type, value) => JSON.stringify([String(type), String(value)]);
 const pairKey = (a, b) => JSON.stringify([a, b].sort());
 const validCount = (n, supply) => Number.isInteger(n) && n > 0 && n <= supply;

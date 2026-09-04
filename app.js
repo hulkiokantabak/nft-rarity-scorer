@@ -1,9 +1,9 @@
-import { ENGINE_VERSION, numberSetting, validateTiers, traitKey, parseTraitCounts, countTraits, supplementTraitCounts, needsTraitScan, buildTraitTypes, buildMissingCountByType, buildPairCounts, classifyTrait as classifyCore, scoreNFT, itemKey, listingAsset, normalizeNFT, addValueMetrics, configFingerprint } from './core.js?v=1.5.0';
-import { createApiClient, abortableDelay, nextPage, fetchNFTBatches, fetchOpenSeaRarities } from './api.js?v=1.5.0';
-import { createKeyStore } from './storage.js?v=1.5.0';
-import { validateConfig } from './config.js?v=1.5.0';
-import { ARTBLOCKS_CHAINS, createArtBlocksClient, fetchArtBlocksPortfolio, fetchArtBlocksProjectPopulation, scoreArtBlocksPopulation, projectIdentity, normalizeArtBlocksToken } from './artblocks.js?v=1.5.0';
-import { openSeaRanking, summarizeHoldings, summarizeProjects, projectRanksForHoldings, rankText } from './rankings.js?v=1.5.0';
+import { ENGINE_VERSION, numberSetting, validateTiers, traitKey, parseTraitCounts, countTraits, supplementTraitCounts, needsTraitScan, buildTraitTypes, buildMissingCountByType, buildPairCounts, classifyTrait as classifyCore, scoreNFT, itemKey, listingAsset, normalizeNFT, addValueMetrics, configFingerprint } from './core.js?v=1.6.0';
+import { createApiClient, abortableDelay, nextPage, fetchNFTBatches, fetchOpenSeaRarities } from './api.js?v=1.6.0';
+import { createKeyStore } from './storage.js?v=1.6.0';
+import { validateConfig } from './config.js?v=1.6.0';
+import { ARTBLOCKS_CHAINS, createArtBlocksClient, fetchArtBlocksPortfolio, fetchArtBlocksProjectPopulation, scoreArtBlocksPopulation, fetchArtBlocksProjectLabels, projectIdentity, normalizeArtBlocksToken } from './artblocks.js?v=1.6.0';
+import { openSeaRanking, summarizeHoldings, summarizeProjects, projectRanksForHoldings, rankText } from './rankings.js?v=1.6.0';
 let resultConfig = null;
 let resultMode = 'listed';
 let runMode = 'listed';
@@ -443,6 +443,7 @@ function clearResultView() {
   document.getElementById('resultsTable').innerHTML = '';
   document.getElementById('resultsHeader').classList.remove('visible');
   document.getElementById('collectionInfo').classList.remove('visible');
+  document.getElementById('colProjects').innerHTML = '';
   document.getElementById('provenance').hidden = true;
   document.getElementById('showMoreWrap').style.display = 'none';
   document.getElementById('snapshotsPanel').style.display = 'none';
@@ -494,7 +495,9 @@ async function analyze() {
     const prepared = await prepareScoringBaseline(slug, apiKey, totalSupply, traitCounts, items, mode === 'all' ? items : null);
     traitCounts = prepared.traitCounts;
     await resolveOwnerNames(items, apiKey);
-    items.forEach(item => { item.openSeaRanking = openSeaRanking(item.rarity, colData, slug); });
+    items.forEach(item => { item.openSeaRanking = openSeaRanking(item.rarity, colData, slug); item.openSeaCollectionName = colData.name || slug; });
+    await enrichArtBlocksLabels(items);
+    document.getElementById('colProjects').innerHTML = collectionProjectLabelsHtml(items);
     const allTraitTypes = buildTraitTypes(traitCounts);
     const missingCountByType = buildMissingCountByType(traitCounts, totalSupply);
     const pairCounts = prepared.pairCounts;
@@ -559,6 +562,29 @@ function showCollectionInfo(colData, totalSupply) {
   name.textContent = colData.name || colData.collection || '';
   meta.textContent = `${totalSupply} items · ${runMode === 'listed' ? 'Listed' : 'All'} mode`;
   el.classList.add('visible');
+}
+
+async function enrichArtBlocksLabels(items) {
+  const result = await fetchArtBlocksProjectLabels(items, artBlocksRequest, { signal: abortController.signal });
+  result.warnings.forEach(warn);
+  for (const item of items) {
+    const labels = result.labels.get(itemKey(item));
+    if (labels) item.artBlocksProject = labels;
+  }
+}
+function projectClassificationText(project) {
+  if (!project) return '';
+  return [project.ab500 === true ? 'AB500' : project.ab500 === false ? 'Not AB500' : 'AB500 unverified', ...(project.category === 'Curated' && project.series ? [] : [project.category || 'Category unavailable']), ...(project.series ? [`Curated Series ${project.series}`] : [])].join(' · ');
+}
+function projectMetadataHtml(item, includeName = false, includeMarket = true) {
+  const project = item.artBlocksProject;
+  const scope = item.openSeaRanking?.scope || item.marketplaceSlug;
+  if (!project && !scope) return '';
+  return `<div class="project-metadata">${project && includeName ? `<span class="project-label-name">${escapeHtml(project.name)}</span>` : ''}${project?.artist ? `<span class="project-artist">by ${escapeHtml(project.artist)}</span>` : ''}${project ? `<span class="project-classification">${escapeHtml(projectClassificationText(project))}</span>` : ''}${includeMarket && scope ? `<span class="project-marketplace">OpenSea collection: <a href="https://opensea.io/collection/${encodeURIComponent(scope)}" target="_blank" rel="noopener">${escapeHtml(item.openSeaCollectionName || scope)}</a></span>` : ''}</div>`;
+}
+function collectionProjectLabelsHtml(items) {
+  const projects = [...new Map(items.filter(i => i.artBlocksProject).map(i => [i.artBlocksProject.key, i.artBlocksProject])).values()];
+  return projects.length ? `<div class="project-label-list"><span>Art Blocks projects in these results:</span>${projects.map(project => projectMetadataHtml({ artBlocksProject: project }, true, false)).join('')}</div>` : '';
 }
 
 // Stamp per-item chain/contract so renderers can build OpenSea links
@@ -778,8 +804,38 @@ function reScoreWithWeights() {
 }
 
 // ─── Portfolio summary rendering ───
+function portfolioOptions() {
+  return { scoreMissing: document.getElementById('portfolioScoreMissing').checked, scorePairs: document.getElementById('portfolioScorePairs').checked };
+}
+function portfolioPolicyText(config = resultConfig || runConfig || portfolioOptions()) {
+  return `Missing traits ${config.scoreMissing ? 'on' : 'off'} · combinations ${config.scorePairs ? 'on' : 'off'}`;
+}
+function setPortfolioOptionsBusy(busy) {
+  for (const id of ['portfolioScoreMissing', 'portfolioScorePairs']) document.getElementById(id).disabled = busy;
+}
+async function changePortfolioScoring() {
+  if (isRunning || !viewingPortfolio || !portfolioState || !scoredItems.length) return;
+  resultConfig = { ...resultConfig, ...portfolioOptions() };
+  for (const item of scoredItems) {
+    Object.assign(item, scoreNFT(item, {}, item.totalSupply, { ...resultConfig, scoreMissing: false, scorePairs: false }, null), { rarityRank: item.openSeaRanking?.rank });
+    delete item.customProjectRank;
+  }
+  portfolioState.rankStatus.clear();
+  updatePortfolioProvenance(); applySorting();
+  await calculatePortfolioRanks(true);
+}
+function cachePortfolioPopulation(state, id, data) {
+  state.populations.delete(id);
+  let size = [...state.populations.values()].reduce((n, d) => n + d.tokens.length, 0);
+  while (size + data.tokens.length > 50000 && state.populations.size) {
+    const oldest = state.populations.keys().next().value;
+    size -= state.populations.get(oldest).tokens.length; state.populations.delete(oldest);
+  }
+  state.populations.set(id, data);
+}
+
 function portfolioSummaryRows(items) {
-  return summarizeProjects(items).map(p => items.filter(i => i.collectionSlug === p.key).map((item, index) => `<tr><th scope="row">${index === 0 ? `<button class="btn btn-secondary" data-project="${escapeHtml(p.key)}" onclick="selectPortfolioProject(this.dataset.project)">${escapeHtml(p.name)}</button><small>${escapeHtml(p.chain)} · project ${escapeHtml(p.projectId)} · ${escapeHtml(p.contract.slice(0, 8))}…${escapeHtml(p.contract.slice(-4))}</small>` : ''}${escapeHtml(item.name)}</th><td>${escapeHtml(rankText(item.openSeaRanking))}${item.openSeaRanking ? `<small>${escapeHtml(item.openSeaRanking.scope)}</small>` : ''}</td><td>${escapeHtml(rankText(item.customProjectRank))}${!item.customProjectRank ? `<small>${escapeHtml(portfolioState?.rankStatus.get(p.key) || 'Waiting for complete project scoring')}</small>` : ''}</td></tr>`).join('')).join('');
+  return summarizeProjects(items).map(p => items.filter(i => i.collectionSlug === p.key).map((item, index) => `<tr><th scope="row">${index === 0 ? `<button class="btn btn-secondary" data-project="${escapeHtml(p.key)}" onclick="selectPortfolioProject(this.dataset.project)">${escapeHtml(p.name)}</button>${projectMetadataHtml(item)}<small>${escapeHtml(p.chain)} · project ${escapeHtml(p.projectId)} · ${escapeHtml(p.contract.slice(0, 8))}…${escapeHtml(p.contract.slice(-4))}</small>` : ''}${escapeHtml(item.name)}</th><td>${escapeHtml(rankText(item.openSeaRanking))}</td><td>${escapeHtml(rankText(item.customProjectRank))}${!item.customProjectRank ? `<small>${escapeHtml(portfolioState?.rankStatus.get(p.key) || 'Waiting for complete project scoring')}</small>` : ''}</td></tr>`).join('')).join('');
 }
 
 function renderPortfolioSummary(result, items, addr) {
@@ -797,16 +853,16 @@ function renderPortfolioSummary(result, items, addr) {
     </div>
     <p class="help-text">Total points are an inventory sum, not a portfolio rarity or valuation. Raw scores depend on each project’s trait structure. ${status}</p>
     <div class="portfolio-controls">
-      <label for="portfolioProject">Inspect project <select id="portfolioProject" onchange="selectPortfolioProject(this.value)"><option value="">All held projects</option>${projects.map(p => `<option value="${escapeHtml(p.key)}">${escapeHtml(p.name)} · ${escapeHtml(p.chain)} · #${escapeHtml(p.projectId)} (${p.held} held)</option>`).join('')}</select></label>
+      <label for="portfolioProject">Inspect project <select id="portfolioProject" onchange="selectPortfolioProject(this.value)"><option value="">All held projects</option>${projects.map(p => `<option value="${escapeHtml(p.key)}">${escapeHtml(p.name)} · ${escapeHtml(projectClassificationText(items.find(i => i.collectionSlug === p.key)?.artBlocksProject))} · ${escapeHtml(p.chain)} · #${escapeHtml(p.projectId)} (${p.held} held)</option>`).join('')}</select></label>
       <button class="btn btn-secondary" id="portfolioRankBtn" onclick="calculatePortfolioRanks()" ${isRunning ? 'disabled' : ''}>Retry unavailable project scores</button>
     </div>
-    <p class="help-text">Held rarity is calculated automatically against every minted work in its project, with missing traits and trait combinations both enabled. Limits: 20,000 pieces per project / 50,000 per run; 1 million pair observations per project. Retry unavailable scores for the selected project or all projects. Re-run Portfolio after changing tiers, weights or bonuses.</p>
+    <p class="help-text">Held rarity compares every minted work in its project. Applied options: ${portfolioPolicyText()}. Limits: 20,000 pieces per project / 50,000 per run; 1 million pair observations per project when combinations are on. Retry unavailable scores for the selected project or all projects. Re-run Portfolio after changing tiers, weights or bonuses.</p>
     <p class="help-text" id="portfolioVisibleSummary" role="status"></p>
     <div class="portfolio-projects"><table><caption>Held scores by project</caption><thead><tr><th>Project / work</th><th>OS rarity</th><th>Held rarity · whole project</th></tr></thead><tbody>
     ${portfolioSummaryRows(items)}
     </tbody></table></div>
     <details class="help-text"><summary>How rankings and percentages work</summary>
-      <p>Held rarity ranks each owned artwork against the entire minted Art Blocks project, never just the wallet. Both missing traits and trait combinations contribute to the displayed score and rank. Missing-trait frequencies and combinations use the complete project metadata; official feature-value frequencies are preserved. Ties show the full position and Top % range. Assumed points are labelled. Incomplete scans leave scores and Held rarity unavailable.</p>
+      <p>Held rarity ranks each owned artwork against the entire minted Art Blocks project, never just the wallet. The selected options apply equally to the displayed score and rank. Missing-trait frequencies and combinations use complete project metadata; official feature-value frequencies are preserved. Option changes recalculate verified populations cached in this tab (up to 50,000 pieces); uncached projects are fetched again. Ties show the full position and Top % range. Assumed points are labelled. Incomplete scans leave scores and Held rarity unavailable.</p>
       <p>OpenSea Top % is its reported rank divided by its matching rarity population, with the same strategy/version. It is a derived rank-position percentage, not a recomputed rarity score or exact count of works rarer. The OpenSea collection can differ from the Art Blocks project. Missing or mismatched ranking metadata stays unavailable.</p>
       <p>${result.catalog.contracts.size} officially indexed core contracts verified live. Catalog checked ${escapeHtml(result.catalog.checkedAt)}. Includes verified Engine/Flex and legacy cores on Ethereum, Arbitrum, Base and Shape. Indexes can lag; scans are not atomic.</p>
       <a href="https://github.com/hulkiokantabak/nft-rarity-scorer/blob/master/ARTBLOCKS_SCOPE.md" target="_blank" rel="noopener">Coverage and methodology</a>
@@ -834,6 +890,8 @@ async function analyzePortfolio() {
   try { ({ thresholds, points } = beginConfig()); } catch (e) { showError(e.message); return; }
   clearResultView(); cachedFetchData = null;
   isRunning = true; viewingPortfolio = true;
+  setPortfolioOptionsBusy(true);
+  runConfig = { ...runConfig, ...portfolioOptions() };
   const btn = document.getElementById('portfolioBtn');
   btn.disabled = true; btn.textContent = 'Verifying Art Blocks...';
   abortController = new AbortController(); showProgress();
@@ -852,7 +910,6 @@ async function analyzePortfolio() {
       onProgress: message => setProgress(40, message)
     });
     result.warnings.forEach(warn);
-    runConfig = { ...runConfig, scoreMissing: true, scorePairs: true };
     const scored = result.tokens.map(token => {
       const identity = projectIdentity(token.chain_id, token.contract_address, token.token_id);
       const project = result.projects.get(identity.key);
@@ -867,12 +924,14 @@ async function analyzePortfolio() {
       for (const item of scored) {
         const record = enriched.records.get(itemKey(item));
         item.openSeaRanking = openSeaRanking(record?.rarity, enriched.collections.get(record?.slug), record?.slug);
+        const collection = enriched.collections.get(record?.slug);
+        item.openSeaCollectionName = collection?.collection === record?.slug ? collection?.name || record?.slug : record?.slug;
         item.rarityRank = item.openSeaRanking?.rank;
       }
     } else if (document.getElementById('portfolioOpenSea').checked && !key) {
       result.warnings.push('OpenSea ranks need an OpenSea API key. Key-free Art Blocks scores are available; add a key and rerun to include OpenSea.');
     }
-    portfolioState = { result, addr, rankStatus: new Map() };
+    portfolioState = { result, addr, rankStatus: new Map(), populations: new Map() };
     abortController.signal.throwIfAborted();
     renderPortfolioSummary(result, scored, addr);
     if (scored.some(item => item.unsupportedFeatures)) warn('Some Art Blocks feature values have unsupported structures. Their frequencies are unavailable; valid scalar traits retain their measured scores.');
@@ -888,6 +947,7 @@ async function analyzePortfolio() {
   } catch (e) { showError(e.name === 'AbortError' ? 'Portfolio scoring cancelled.' : e.message); }
   finally {
     isRunning = false; btn.disabled = false; btn.textContent = 'Score Art Blocks Portfolio';
+    setPortfolioOptionsBusy(false);
     const rankButton = document.getElementById('portfolioRankBtn'); if (rankButton) rankButton.disabled = false;
     if (portfolioState && scoredItems.length) { renderPortfolioSummary(portfolioState.result, scoredItems, portfolioState.addr); updatePortfolioProvenance(); applySorting(); }
     scheduleHideProgress();
@@ -905,16 +965,18 @@ function selectPortfolioProject(value) {
   const select = document.getElementById('portfolioProject'); if (select) select.value = value;
   renderPortfolioSummary(portfolioState.result, scoredItems, portfolioState.addr); applyFilters();
 }
-async function calculatePortfolioRanks() {
+async function calculatePortfolioRanks(allProjects = false) {
   if (isRunning || !viewingPortfolio || !portfolioState || !scoredItems.length) return;
   isRunning = true; hideError(); abortController = new AbortController(); showProgress();
-  const state = portfolioState, config = { ...resultConfig, scoreMissing: true, scorePairs: true };
+  setPortfolioOptionsBusy(true);
+  const state = portfolioState, config = { ...resultConfig };
   renderPortfolioSummary(state.result, scoredItems, state.addr);
   try {
-    await rankPortfolioProjects(state, config, [...state.result.projects].filter(([id]) => !portfolioProject || id === portfolioProject));
+    await rankPortfolioProjects(state, config, [...state.result.projects].filter(([id]) => allProjects || !portfolioProject || id === portfolioProject));
   } catch (e) { showError(e.name === 'AbortError' ? 'Project ranking cancelled. Completed project ranks are retained.' : e.message); }
   finally {
     isRunning = false; renderPortfolioSummary(state.result, scoredItems, state.addr); updatePortfolioProvenance(); applySorting(); scheduleHideProgress();
+    setPortfolioOptionsBusy(false);
   }
 }
 
@@ -930,7 +992,7 @@ async function rankPortfolioProjects(state, config, projects) {
       if (supply > 20000) { state.rankStatus.set(id, 'Not calculated: project exceeds the 20,000-piece safety limit.'); continue; }
       budget -= supply;
       try {
-        const data = await fetchArtBlocksProjectPopulation(project, artBlocksRequest, { signal: abortController.signal,
+        const data = state.populations.get(id) || await fetchArtBlocksProjectPopulation(project, artBlocksRequest, { signal: abortController.signal,
           onProgress: (done, total) => setProgress(Math.min(95, done / total * 90), `Ranking ${project.name}: ${done}/${total} project pieces...`) });
         const { population, counts, pairs } = await scoreArtBlocksPopulation(data.tokens, data.project, config, { signal: abortController.signal });
         const rescored = held.map(item => scoreNFT(item, counts, supply, config, pairs));
@@ -940,7 +1002,8 @@ async function rankPortfolioProjects(state, config, projects) {
           rarityRank: held[i].openSeaRanking?.rank,
           customProjectRank: { ...ranks.get(itemKey(held[i])), config: configFingerprint(config), dataUpdatedAt: data.updatedAt }
         });
-        state.rankStatus.set(id, `Full project ranked · ${supply} pieces · missing traits + combinations`);
+        cachePortfolioPopulation(state, id, data);
+        state.rankStatus.set(id, `Full project ranked · ${supply} pieces · ${portfolioPolicyText(config)}`);
       } catch (e) { abortController.signal.throwIfAborted(); state.rankStatus.set(id, e.message); }
       renderPortfolioSummary(state.result, scoredItems, state.addr); updatePortfolioProvenance(); applySorting();
     }
@@ -954,7 +1017,7 @@ async function rankPortfolioProjects(state, config, projects) {
 
 function updatePortfolioProvenance() {
   const total = summarizeHoldings(scoredItems);
-  document.getElementById('provenance').textContent = `Custom weighted trait tiers · v${ENGINE_VERSION}. Art Blocks holdings grouped by chain, contract and project. ${total.scored}/${total.held} scores complete. Held rarity uses the entire minted project with missing traits and trait combinations enabled; never a holdings subset. Config ${configFingerprint(resultConfig)}. ${total.assumedPoints} assumed points included (not measured frequencies). Incomplete projects remain unscored; see their status above.`;
+  document.getElementById('provenance').textContent = `Custom weighted trait tiers · v${ENGINE_VERSION}. Art Blocks holdings grouped by chain, contract and project. ${total.scored}/${total.held} scores complete. Held rarity uses the entire minted project; ${portfolioPolicyText()}; never a holdings subset. Config ${configFingerprint(resultConfig)}. ${total.assumedPoints} assumed points included (not measured frequencies). Incomplete projects remain unscored; see their status above.`;
 }
 
 // ─── Compare Tab (two-input self-contained comparison) ───
@@ -1058,6 +1121,7 @@ async function runCompareAnalysis(slug, apiKey, tierConfig, pStart, pEnd, prefet
   const prepared = await prepareScoringBaseline(slug, apiKey, totalSupply, traitCounts, items);
   traitCounts = prepared.traitCounts;
   const pairCounts = prepared.pairCounts;
+  await enrichArtBlocksLabels(items);
   const scored = items.map(item => scoreNFT(item, traitCounts, totalSupply, runConfig, pairCounts));
 
   const scores = scored.filter(i => i.scoringMethod !== 'Unscored').map(i => i.totalScore);
@@ -1091,7 +1155,7 @@ async function runCompareAnalysis(slug, apiKey, tierConfig, pStart, pEnd, prefet
   }
 
   return {
-    slug, totalSupply,
+    slug, totalSupply, projectLabelsHtml: collectionProjectLabelsHtml(items),
     name: colData.name || slug,
     imageUrl: colData.image_url || '',
     count: scored.length,
@@ -1135,6 +1199,7 @@ function renderCompareTabResults(A, B) {
           ${safeImg ? `<img src="${escapeHtml(safeImg)}" alt="" style="width:28px; height:28px; border-radius:4px; object-fit:cover;">` : ''}
           <span>${escapeHtml(r.name)}</span>
         </h3>
+        ${r.projectLabelsHtml || ''}
         <div class="col-sub"><a href="https://opensea.io/collection/${encodeURIComponent(r.slug)}" target="_blank" rel="noopener" style="color:var(--accent); text-decoration:none;">${escapeHtml(r.slug)}</a> &middot; ${r.totalSupply} items total &middot; ${r.count} listed</div>
         <p class="help-text">${r.coverage}% of listed NFTs have full measured trait coverage. ${escapeHtml(r.source)}.${r.assumedCount ? ` ${r.assumedCount} NFTs include assumed-rarity points (missing-data option enabled).` : ''}</p>
         <div style="padding:10px 0; border-top:1px solid var(--border); border-bottom:1px solid var(--border); text-align:center;">
@@ -1292,7 +1357,7 @@ function renderResults(items, totalSupply, slug, chain, contractAddress, thresho
   if (items.some(i => i.priceComparable === false)) warnings.push('Some payment-token identities are unavailable; these prices are excluded from value/floor comparisons.');
   const provenance = document.getElementById('provenance');
   provenance.hidden = false;
-  provenance.innerHTML = `<strong>${slug === 'demo' ? 'Synthetic demo · ' : ''}Custom weighted trait tiers · v${ENGINE_VERSION}</strong><br>${available}/${items.length} NFTs scored; ${partial} partial. ${viewingPortfolio ? 'Art Blocks holdings across Ethereum, Arbitrum, Base and Shape; grouped by chain, contract and project. Whole-project Held rarity uses missing traits and combinations; no wallet-relative ranks.' : `${items.length}/${totalSupply} NFTs fetched (${resultMode}).`} Config ${configFingerprint(resultConfig)}. Data fetched ${escapeHtml((viewingPortfolio ? null : cachedFetchData?.fetchedAt) || new Date().toISOString())}. ${escapeHtml([...new Set(items.map(i => i.source))].join('; '))}. ${warnings.map(escapeHtml).join(' ')}`;
+  provenance.innerHTML = `<strong>${slug === 'demo' ? 'Synthetic demo · ' : ''}Custom weighted trait tiers · v${ENGINE_VERSION}</strong><br>${available}/${items.length} NFTs scored; ${partial} partial. ${viewingPortfolio ? 'Art Blocks holdings across Ethereum, Arbitrum, Base and Shape; grouped by chain, contract and project. Whole-project Held rarity uses the selected scoring options; no wallet-relative ranks.' : `${items.length}/${totalSupply} NFTs fetched (${resultMode}).`} Config ${configFingerprint(resultConfig)}. Data fetched ${escapeHtml((viewingPortfolio ? null : cachedFetchData?.fetchedAt) || new Date().toISOString())}. ${escapeHtml([...new Set(items.map(i => i.source))].join('; '))}. ${warnings.map(escapeHtml).join(' ')}`;
   document.getElementById('resultsHeader').classList.add('visible');
 
   renderParams = { totalSupply, chain, contractAddress, minScore, maxScore };
@@ -1359,7 +1424,7 @@ function renderPortfolioGroups(target, items) {
     groups.get(item.collectionSlug).push(item);
   }
   // Group before slicing so even projects after a large holding have a header.
-  target.innerHTML = [...groups].map(([key, group]) => `<details class="portfolio-project-details" data-project="${escapeHtml(key)}" ${expandedProjects.has(key) ? 'open' : ''}><summary>${escapeHtml(group[0].collectionName)} · ${escapeHtml(group[0].chain)} · project ${escapeHtml(group[0].artBlocksProjectId)} · ${escapeHtml(group[0].contractAddress.slice(0, 8))}…${escapeHtml(group[0].contractAddress.slice(-4))} · ${group.length} held works</summary><div class="portfolio-project-body"></div></details>`).join('');
+  target.innerHTML = [...groups].map(([key, group]) => `<details class="portfolio-project-details" data-project="${escapeHtml(key)}" ${expandedProjects.has(key) ? 'open' : ''}><summary>${escapeHtml(group[0].collectionName)} · ${group.length} held works${projectMetadataHtml(group[0], false, false)}<span class="project-identity">${escapeHtml(group[0].chain)} · project ${escapeHtml(group[0].artBlocksProjectId)} · ${escapeHtml(group[0].contractAddress.slice(0, 8))}…${escapeHtml(group[0].contractAddress.slice(-4))}</span></summary><div class="portfolio-project-body"></div></details>`).join('');
   for (const detail of target.querySelectorAll('.portfolio-project-details')) {
     const key = detail.dataset.project;
     const draw = () => {
@@ -1387,8 +1452,8 @@ function showMoreProject(key) {
 function artworkRanksHtml(item) {
   const os = item.openSeaRanking || openSeaRanking(item.rarity, null, item.marketplaceSlug);
   let html = `<div class="artwork-ranks"><div><strong>OpenSea:</strong> ${escapeHtml(rankText(os))}</div>`;
-  if (os) html += `<small>${escapeHtml(os.scope)}${os.strategy ? ' · ' + escapeHtml(os.strategy) + ' ' + escapeHtml(os.version || '') : ''}${os.calculatedAt ? ' · ' + escapeHtml(os.calculatedAt) : ''}</small>`;
-  if (item.artBlocksVerified) html += `<div><strong>Held rarity:</strong> ${escapeHtml(rankText(item.customProjectRank))}</div><small>Within the whole Art Blocks project · missing traits + combinations${!item.customProjectRank ? ' · ' + escapeHtml(portfolioState?.rankStatus.get(item.collectionSlug) || 'Waiting for complete project scoring') : ''}</small>`;
+  if (os?.strategy || os?.calculatedAt) html += `<small>${escapeHtml([os.strategy, os.version, os.calculatedAt].filter(Boolean).join(' · '))}</small>`;
+  if (item.artBlocksVerified) html += `<div><strong>Held rarity:</strong> ${escapeHtml(rankText(item.customProjectRank))}</div><small>Within the whole Art Blocks project · ${portfolioPolicyText()}${!item.customProjectRank ? ' · ' + escapeHtml(portfolioState?.rankStatus.get(item.collectionSlug) || 'Waiting for complete project scoring') : ''}</small>`;
   return html + '</div>';
 }
 
@@ -1433,6 +1498,7 @@ function cardsMarkup(items, totalSupply, chain, contractAddress) {
           <div>
           <div class="item-name"><span class="item-idx">#${idx + 1}</span> ${escapeHtml(item.name)}</div>
           ${item.collectionName ? `<div style="font-size:0.72rem; color:var(--text-muted);">from ${projectHtml}${item.artBlocksVerified ? ` · ${escapeHtml(item.chain)} · project ${escapeHtml(item.artBlocksProjectId)}` : ''}</div>` : ''}
+          ${projectMetadataHtml(item, !item.artBlocksVerified)}
           <div class="item-badges">
             ${item.isBargain ? '<span class="badge badge-bargain">High score / lower price</span>' : ''}
           </div>
@@ -1519,7 +1585,7 @@ function tableMarkup(items, totalSupply, chain, contractAddress) {
         <td class="score-cell" style="color:${item.scoreColor}">${item.scoringMethod === 'Unscored' ? '—' : item.totalScore}</td>
         <td>${item.valueScore != null ? item.valueScore : '—'}</td>
         <td class="price-cell">${item.price != null ? formatPrice(item.price) + ' ' + escapeHtml(item.currency) : '—'}</td>
-        <td><button class="row-toggle" aria-expanded="false" aria-controls="${escapeHtml(expansionId)}" onclick="toggleTableRow(this.closest('tr'))">${escapeHtml(item.name)}</button><div class="score-method">${escapeHtml(item.scoringMethod)} · ${Math.round(item.coverage * 100)}% measured coverage${item.assumedTraits ? ` · ${item.assumedPoints} assumed pts` : ''}</div>${item.collectionName ? ` <span style="color:var(--text-muted); font-size:0.72rem;">· ${escapeHtml(item.collectionName)}</span>` : ''}${item.isBargain ? ' <span class="badge badge-bargain">High score / lower price</span>' : ''}</td>
+        <td><button class="row-toggle" aria-expanded="false" aria-controls="${escapeHtml(expansionId)}" onclick="toggleTableRow(this.closest('tr'))">${escapeHtml(item.name)}</button>${projectMetadataHtml(item, !item.artBlocksVerified)}<div class="score-method">${escapeHtml(item.scoringMethod)} · ${Math.round(item.coverage * 100)}% measured coverage${item.assumedTraits ? ` · ${item.assumedPoints} assumed pts` : ''}</div>${item.collectionName ? ` <span style="color:var(--text-muted); font-size:0.72rem;">· ${escapeHtml(item.collectionName)}</span>` : ''}${item.isBargain ? ' <span class="badge badge-bargain">High score / lower price</span>' : ''}</td>
         <td>${ownerLinkHtml(item, ' onclick="event.stopPropagation()"')}</td>
         <td>${artworkRanksHtml(item)}</td>
         <td><div class="tier-dots">
@@ -1647,7 +1713,7 @@ function exportCSV() {
   const tierHeaders = (resultConfig?.tiers || activeTiers).map(t => csvSafe(t.name + ' Traits'));
   const headers = ['Position', 'Name', 'Token ID', 'Score', 'Score per quoted currency unit', 'Price', 'Currency', 'Owner', 'OS Rarity Rank', ...tierHeaders, 'High score lower price', 'OpenSea URL', 'Chain', 'Contract', 'Scoring method', 'Measured trait coverage', 'Engine', 'Config fingerprint', 'Frequency source', 'Assumed rarity contributions', 'Assumed rarity points',
     'Project cohort', 'Project name', 'Art Blocks project ID', 'OS rarity population', 'OS Top percent (rank over rarity supply)', 'OS collection', 'OS strategy', 'OS strategy version', 'OS calculated at',
-    'Held rarity rank', 'Held rarity tie end', 'Held rarity project population', 'Held rarity Top percent low', 'Held rarity Top percent high', 'Project population with assumptions', 'Held rank calculated at', 'Held rank config', 'Missing traits enabled', 'Trait combinations enabled'];
+    'Held rarity rank', 'Held rarity tie end', 'Held rarity project population', 'Held rarity Top percent low', 'Held rarity Top percent high', 'Project population with assumptions', 'Held rank calculated at', 'Held rank config', 'Missing traits enabled', 'Trait combinations enabled', 'Verified Art Blocks project', 'Project artist', 'AB500 membership', 'Art Blocks category', 'Curated series', 'Project classification source'];
   const rows = exportItems.map((item, idx) => [
     idx + 1, csvSafe(item.name), csvSafe(item.tokenId), item.scoringMethod === 'Unscored' ? '' : item.totalScore,
     item.valueScore ?? '', item.price != null ? formatPrice(item.price) : '',
@@ -1656,7 +1722,8 @@ function exportCSV() {
     item.isBargain ? 'Yes' : '', item.demo ? '' : csvSafe(openSeaItemUrl(item.chain || '', item.contractAddress || '', item.tokenId)),
     csvSafe(item.chain), csvSafe(item.contractAddress), csvSafe(item.scoringMethod), item.coverage, ENGINE_VERSION, csvSafe(configFingerprint(resultConfig)), csvSafe(item.source), item.assumedTraits || 0, item.assumedPoints || 0,
     csvSafe(item.collectionSlug), csvSafe(item.collectionName), csvSafe(item.artBlocksProjectId), item.openSeaRanking?.total ?? '', item.openSeaRanking?.topHigh ?? '', csvSafe(item.openSeaRanking?.scope), csvSafe(item.openSeaRanking?.strategy), csvSafe(item.openSeaRanking?.version), csvSafe(item.openSeaRanking?.calculatedAt),
-    item.customProjectRank?.rank ?? '', item.customProjectRank?.rankEnd ?? '', item.customProjectRank?.total ?? '', item.customProjectRank?.topLow ?? '', item.customProjectRank?.topHigh ?? '', item.customProjectRank?.assumedPopulation ?? '', csvSafe(item.customProjectRank?.calculatedAt), csvSafe(item.customProjectRank?.config), resultConfig.scoreMissing, resultConfig.scorePairs
+    item.customProjectRank?.rank ?? '', item.customProjectRank?.rankEnd ?? '', item.customProjectRank?.total ?? '', item.customProjectRank?.topLow ?? '', item.customProjectRank?.topHigh ?? '', item.customProjectRank?.assumedPopulation ?? '', csvSafe(item.customProjectRank?.calculatedAt), csvSafe(item.customProjectRank?.config), resultConfig.scoreMissing, resultConfig.scorePairs,
+    csvSafe(item.artBlocksProject?.key), csvSafe(item.artBlocksProject?.artist), item.artBlocksProject ? item.artBlocksProject.ab500 === true ? 'Yes' : item.artBlocksProject.ab500 === false ? 'No' : 'Unverified' : '', csvSafe(item.artBlocksProject?.category), item.artBlocksProject?.series ?? '', csvSafe(item.artBlocksProject?.source)
   ]);
   const csv = [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
   const blob = new Blob([csv], { type: 'text/csv' });
@@ -1827,6 +1894,7 @@ function buildConfigJSON() {
   return { v: 2, engine: ENGINE_VERSION, exported_at: new Date().toISOString(),
     slug: parseSlug(document.getElementById('collectionInput').value), mode: currentMode, tier_mode: currentTierMode,
     score_missing: c.scoreMissing, score_pairs: c.scorePairs, missing_bonus: c.missingBonus, combo_bonus: c.comboBonus,
+    portfolio_score_missing: portfolioOptions().scoreMissing, portfolio_score_pairs: portfolioOptions().scorePairs,
     thumbs_visible: thumbsVisible, active_tab: document.querySelector('.tab-btn.active')?.dataset.tab || 'analyze',
     ...(currentTierMode === 'standard' ? { standard_tiers: { thresholds: tiers.map(t => t.threshold), points: tiers.map(t => t.points) } } : { custom_tiers: tiers }),
     trait_weights: Object.fromEntries([...c.weights].filter(([, w]) => w !== 1)) };
@@ -1875,6 +1943,8 @@ function applyImportedConfig(input) {
   }
   document.getElementById('scoreMissing').checked = config.score_missing;
   document.getElementById('scorePairs').checked = config.score_pairs;
+  document.getElementById('portfolioScoreMissing').checked = config.portfolio_score_missing;
+  document.getElementById('portfolioScorePairs').checked = config.portfolio_score_pairs;
   document.getElementById('missingBonus').value = config.missing_bonus;
   document.getElementById('comboBonus').value = config.combo_bonus;
   traitWeights = config.weights;
@@ -1937,6 +2007,8 @@ function encodeStateToURL() {
   }
   if (document.getElementById('scoreMissing').checked) params.set('miss', '1');
   if (document.getElementById('scorePairs').checked) params.set('pairs', '1');
+  if (!config.portfolio_score_missing) params.set('pmiss', '0');
+  if (!config.portfolio_score_pairs) params.set('ppairs', '0');
   const mb = parseFloat(document.getElementById('missingBonus').value);
   const cb = parseFloat(document.getElementById('comboBonus').value);
   // Only serialize bonuses if they differ from defaults, to keep shared URLs tidy.
@@ -1955,6 +2027,7 @@ function loadStateFromURL() {
       standard_tiers: { thresholds: (p.get('t') || '2,5,20').split(',').map(Number), points: (p.get('p') || '7,3,1').split(',').map(Number) },
       custom_tiers: custom ? JSON.parse(p.get('ct') || '[]').map(t => ({ name: t.n, color: t.c, threshold: t.t, points: t.p })) : undefined,
       trait_weights: JSON.parse(p.get('w') || '{}'), score_missing: p.get('miss') === '1', score_pairs: p.get('pairs') === '1',
+      portfolio_score_missing: p.get('pmiss') !== '0', portfolio_score_pairs: p.get('ppairs') !== '0',
       missing_bonus: p.get('mb') ?? 1.5, combo_bonus: p.get('cb') ?? 2 });
   } catch (e) { showError('Shared settings could not be loaded: ' + e.message); }
 }
@@ -2014,5 +2087,5 @@ loadStateFromURL();
 wireAccessibility();
 
 
-Object.assign(window, { setPortfolioGrouping, selectPortfolioProject, calculatePortfolioRanks, showMoreProject });
+Object.assign(window, { setPortfolioGrouping, selectPortfolioProject, calculatePortfolioRanks, showMoreProject, changePortfolioScoring });
 export { analyze, analyzeCompareTab, analyzePortfolio, loadDemo, reScoreWithWeights, applyImportedConfig, buildConfigJSON, loadStateFromURL, encodeStateToURL, makeSortFn, setView, saveSnapshot, loadSnapshot, getDisplayItems, saveApiKey, clearApiKey, setPortfolioGrouping, selectPortfolioProject, calculatePortfolioRanks };

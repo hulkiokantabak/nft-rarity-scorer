@@ -67,13 +67,15 @@ const reset = () => {
   app.applyImportedConfig({ v: 2, slug: 'fixture', mode: 'listed', standard_tiers: { thresholds: [2, 5, 20], points: [7, 3, 1] }, score_missing: false, score_pairs: false });
   input('apiKey', 'test-key-not-real');
   document.getElementById('portfolioOpenSea').checked = true;
+  document.getElementById('portfolioScoreMissing').checked = true;
+  document.getElementById('portfolioScorePairs').checked = true;
 };
 
 test('initial markup wires every app event handler and labels fixed inputs', () => {
   assert.equal(document.getElementById('walletInput').value, '0x694E64D4AD77e0C234b7b1c55AC40302aD86ce3F');
   for (const id of ['portfolioScoreMissing', 'portfolioScorePairs']) {
     assert.ok(document.getElementById(id).hasAttribute('checked'));
-    assert.ok(document.getElementById(id).disabled);
+    assert.equal(document.getElementById(id).disabled, false);
   }
   for (const [, name] of html.matchAll(/on(?:click|change|input)="([\w]+)\(/g)) if (name !== 'document') assert.equal(typeof window[name], 'function', name);
   for (const el of document.querySelectorAll('input:not([type="checkbox"])')) {
@@ -374,12 +376,100 @@ test('Portfolio collapse state and per-project pagination survive filters, sorti
   app.setView('cards'); assert.equal(document.querySelectorAll('#resultsGrid .item-card').length, 62);
   app.selectPortfolioProject(keys[2]); assert.ok(detailFor(keys[2]).hasAttribute('open')); assert.equal(document.querySelectorAll('#resultsGrid .item-card').length, 2);
 });
+
+test('Portfolio option checkboxes default on but recalculate whole-project scores independently from cached data', async () => {
+  reset(); abFixture = makeFixture(bonusFixture()); input('apiKey', ''); input('walletInput', address); await app.analyzePortfolio();
+  const item = app.getDisplayItems()[0]; app.selectPortfolioProject(item.collectionSlug);
+  const fetches = abFixture.calls.length;
+  document.getElementById('portfolioScorePairs').checked = false;
+  const pending = window.changePortfolioScoring();
+  assert.equal(item.scoringMethod, 'Unscored');
+  assert.match(document.querySelector('.item-card .artwork-ranks').textContent, /Held rarity: Unavailable/);
+  assert.doesNotMatch(document.querySelector('.item-card .artwork-ranks').textContent, /#1 \/ 100/);
+  await pending;
+  assert.equal(item.totalScore, 11); assert.equal(item.pairScores.length, 0); assert.equal(item.customProjectRank.total, 100);
+  assert.match(document.getElementById('provenance').textContent, /Missing traits on · combinations off/);
+  document.getElementById('portfolioScoreMissing').checked = false; await window.changePortfolioScoring();
+  assert.equal(item.totalScore, 0); assert.equal(item.customProjectRank.rankEnd, 100);
+  document.getElementById('portfolioScorePairs').checked = true; await window.changePortfolioScoring();
+  assert.equal(item.totalScore, 14); assert.equal(item.customProjectRank.rankEnd, 2);
+  document.getElementById('portfolioScoreMissing').checked = true; await window.changePortfolioScoring();
+  assert.equal(item.totalScore, 25); assert.equal(item.customProjectRank.rank, 1);
+  assert.equal(abFixture.calls.length, fetches); assert.equal(document.getElementById('portfolioScorePairs').disabled, false);
+  assert.ok(document.querySelector('.portfolio-project-details').hasAttribute('open'));
+});
+
+test('Portfolio option selection before scanning applies without changing Analyze options', async () => {
+  reset(); abFixture = makeFixture(bonusFixture()); input('apiKey', ''); input('walletInput', address);
+  document.getElementById('portfolioScoreMissing').checked = false; document.getElementById('portfolioScorePairs').checked = false;
+  await app.analyzePortfolio(); assert.equal(app.getDisplayItems()[0].totalScore, 0);
+  assert.equal(app.getDisplayItems()[0].customProjectRank.rankEnd, 100);
+  assert.equal(document.getElementById('scoreMissing').checked, false); assert.equal(document.getElementById('scorePairs').checked, false);
+});
+
+test('project headings carry artist and classification while the OS rarity cell contains only rarity', async () => {
+  reset(); osRanks = true; input('walletInput', address); await app.analyzePortfolio();
+  const item = app.getDisplayItems().find(i => i.contractAddress === V1); app.selectPortfolioProject(item.collectionSlug);
+  const row = document.querySelector('.portfolio-projects tbody tr');
+  assert.match(row.querySelector('th').textContent, /by Artist 1/);
+  assert.match(row.querySelector('th').textContent, /AB500 · Curated Series 3/);
+  assert.match(row.querySelector('th').textContent, /OpenSea collection: Fixture/);
+  assert.doesNotMatch(row.querySelector('td').textContent, /Fixture|os-fixture|Artist/);
+  assert.match(row.querySelector('td').textContent, /#4 \/ 200/);
+  assert.match(document.querySelector('.portfolio-project-details summary').textContent, /by Artist 1/);
+  assert.match(document.querySelector('.item-card .project-classification').textContent, /AB500/);
+  app.setView('table'); assert.match(document.querySelector('.expandable .project-metadata').textContent, /Curated Series 3/); app.setView('cards');
+});
+
+test('Analyze and Compare show verified labels without changing their scoring or enabling Portfolio ranks', async () => {
+  reset(); await app.analyze();
+  const item = app.getDisplayItems().find(i => i.contractAddress === FLEX);
+  assert.equal(item.totalScore, 0); assert.equal(item.totalSupply, 100); assert.equal(item.collectionSlug, 'fixture');
+  assert.equal(item.artBlocksProject.category, 'Flex'); assert.equal(item.artBlocksProject.ab500, false);
+  assert.equal(item.artBlocksVerified, undefined);
+  assert.match(document.getElementById('colProjects').textContent, /Not AB500 · Flex/);
+  assert.match(document.getElementById('resultsGrid').textContent, /Not AB500 · Flex/);
+  assert.doesNotMatch(document.getElementById('resultsGrid').textContent, /Held rarity:/);
+  app.reScoreWithWeights(); assert.match(document.getElementById('resultsGrid').textContent, /Not AB500 · Flex/);
+  app.setView('table'); assert.match(document.getElementById('resultsTable').textContent, /by Artist 0/); app.setView('cards');
+  input('compareSlugA', 'fixture-a'); input('compareSlugB', 'fixture-b'); await app.analyzeCompareTab();
+  assert.equal(document.querySelectorAll('.compare-card .project-classification').length, 2);
+  assert.match(document.getElementById('compareResultsArea').textContent, /Not AB500 · Flex/);
+});
+
+test('label failure is nonfatal and project labels export without keys or formula injection', async () => {
+  reset(); abOptions.fail = query => query.includes('ArtBlocksTokenProjectLabels'); await app.analyze();
+  assert.equal(app.getDisplayItems()[0].totalScore, 7);
+  assert.match(document.getElementById('provenance').textContent, /labels could not be verified/);
+  delete abOptions.fail;
+  abFixture = makeFixture({ projects: [abProject(V1, 1, 1, { artist_name: '=untrusted <script>Artist</script>' })] });
+  input('apiKey', ''); input('walletInput', address); await app.analyzePortfolio();
+  assert.equal(document.querySelectorAll('.portfolio-projects script').length, 0);
+  let exported; const original = URL.createObjectURL; URL.createObjectURL = blob => { exported = blob; return 'blob:test'; };
+  try { window.exportCSV(); } finally { URL.createObjectURL = original; }
+  const csv = await exported.text(); assert.match(csv, /AB500 membership,Art Blocks category,Curated series/);
+  assert.ok(csv.includes("'=untrusted")); assert.ok(!csv.includes('test-key-not-real'));
+  assert.match(csv, /,Yes,Curated,3,/);
+});
 test('shared URL retains zeros and weights and excludes secrets', () => {
   reset(); input('points1', '0'); input('missingBonus', '0');
   const config = app.buildConfigJSON(); config.trait_weights = { Color: 0 }; app.applyImportedConfig(config);
   app.encodeStateToURL(); assert.ok(!location.href.includes('test-key-not-real'));
   app.loadStateFromURL(); const restored = app.buildConfigJSON();
   assert.equal(restored.standard_tiers.points[0], 0); assert.equal(restored.missing_bonus, 0); assert.equal(restored.trait_weights.Color, 0);
+});
+
+test('Portfolio bonus choices round-trip independently through configuration JSON and shared URLs', () => {
+  reset(); document.getElementById('portfolioScoreMissing').checked = false; document.getElementById('portfolioScorePairs').checked = true;
+  document.getElementById('scoreMissing').checked = true; document.getElementById('scorePairs').checked = false;
+  const config = app.buildConfigJSON();
+  assert.equal(config.portfolio_score_missing, false); assert.equal(config.portfolio_score_pairs, true);
+  app.applyImportedConfig(config); assert.equal(document.getElementById('portfolioScoreMissing').checked, false);
+  app.encodeStateToURL(); assert.match(location.href, /pmiss=0/); assert.ok(!location.href.includes('test-key-not-real'));
+  document.getElementById('portfolioScoreMissing').checked = true; app.loadStateFromURL();
+  assert.equal(document.getElementById('portfolioScoreMissing').checked, false); assert.equal(document.getElementById('scoreMissing').checked, true);
+  assert.equal(document.getElementById('portfolioScorePairs').checked, true); assert.equal(document.getElementById('scorePairs').checked, false);
+  assert.throws(() => app.applyImportedConfig({ ...config, portfolio_score_missing: 'false' }), /true or false/);
 });
 test('snapshot incompatible with a changed config cannot overlay', () => {
   reset(); app.loadDemo(); app.saveSnapshot(); input('points1', '0'); app.reScoreWithWeights(); app.loadSnapshot(0);

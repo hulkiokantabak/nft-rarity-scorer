@@ -1,34 +1,35 @@
 // Official Art Blocks inventory and project-scoped Portfolio data. Never send an
 // OpenSea key here, and never use names/slugs/prefixes as a contract allowlist.
-import { traitKey, countTraits, supplementTraitCounts, buildPairCounts, scoreNFT } from './core.js?v=1.5.0';
-import { abortableDelay, retryDelay } from './api.js?v=1.5.0';
+import { traitKey, countTraits, supplementTraitCounts, buildPairCounts, scoreNFT, itemKey } from './core.js?v=1.6.0';
+import { abortableDelay, retryDelay } from './api.js?v=1.6.0';
 
 export const ARTBLOCKS_ENDPOINT = 'https://data.artblocks.io/v1/graphql';
 
-// The requested Portfolio policy always uses both bonuses and the whole project.
+// Portfolio defaults both bonuses on, but applies the user's current choices.
 // Bound quadratic pair work as well as token count, and yield between batches.
 export async function scoreArtBlocksPopulation(tokens, project, config, { signal, maxPairWork = 1000000 } = {}) {
   const supply = Number(project.invocations), normalized = [];
+  const effectiveConfig = { ...config, scoreMissing: config.scoreMissing ?? true, scorePairs: config.scorePairs ?? true };
   let pairWork = 0;
   for (let i = 0; i < tokens.length; i++) {
     if (i % 100 === 0) { signal?.throwIfAborted(); await abortableDelay(0, signal); }
     const item = normalizeArtBlocksToken(tokens[i], project);
     const n = item.traits.filter(t => !t.type.startsWith('_')).length;
-    pairWork += n * (n - 1) / 2;
+    pairWork += effectiveConfig.scorePairs ? n * (n - 1) / 2 : 0;
     if (pairWork > maxPairWork) throw new Error('Held rarity unavailable: project exceeds the trait-combination safety limit.');
     normalized.push(item);
   }
   const scanned = countTraits(normalized, supply), official = artBlocksTraitCounts(project);
   if (!scanned._meta.complete || !official._meta.complete) {
-    throw new Error('Held rarity unavailable: complete supported project features are needed for missing-trait and combination scoring.');
+    throw new Error('Held rarity unavailable: complete supported project features are needed for whole-project scoring.');
   }
   const counts = supplementTraitCounts(official, scanned, supply), pairs = Object.create(null);
-  for (let i = 0; i < normalized.length; i += 100) {
+  for (let i = 0; effectiveConfig.scorePairs && i < normalized.length; i += 100) {
     await abortableDelay(0, signal); signal?.throwIfAborted();
     for (const [key, n] of Object.entries(buildPairCounts(normalized.slice(i, i + 100)))) pairs[key] = (pairs[key] || 0) + n;
   }
-  Object.defineProperty(pairs, '_meta', { value: { complete: true, population: supply } });
-  const effectiveConfig = { ...config, scoreMissing: true, scorePairs: true }, population = [];
+  Object.defineProperty(pairs, '_meta', { value: { complete: effectiveConfig.scorePairs, population: supply } });
+  const population = [];
   for (let i = 0; i < normalized.length; i++) {
     if (i % 100 === 0) { await abortableDelay(0, signal); signal?.throwIfAborted(); }
     population.push(scoreNFT(normalized[i], counts, supply, effectiveConfig, pairs));
@@ -59,18 +60,87 @@ export const CONTRACTS_QUERY = `query ArtBlocksContracts($chain: Int!, $after: S
   }
   contracts_metadata_aggregate(where: {chain_id: {_eq: $chain}}) { aggregate { count } }
 }`;
+export const PROJECT_LABEL_FIELDS = `artist_name artist_profiles { display_name }
+  vertical_name vertical { name display_name category_name } series_id
+  tags { tag_name tag { name display_name status grouping_name type } }`;
 export const HOLDINGS_QUERY = `query ArtBlocksHoldings($chain: Int!, $owner: String!, $after: String!) {
   tokens_metadata(where: {chain_id: {_eq: $chain}, owner_address: {_eq: $owner}, id: {_gt: $after}}, order_by: {id: asc}, limit: 200) {
     id token_id project_id chain_id contract_address owner_address invocation features media_url
-    project { id project_id chain_id contract_address name invocations opensea_slug }
+    project { id project_id chain_id contract_address name invocations opensea_slug ${PROJECT_LABEL_FIELDS} }
   }
 }`;
 export const PROJECTS_QUERY = `query ArtBlocksProjects($chain: Int!, $ids: [String!]!) {
   projects_metadata(where: {chain_id: {_eq: $chain}, id: {_in: $ids}}) {
     id project_id chain_id contract_address name invocations opensea_slug
+    ${PROJECT_LABEL_FIELDS}
     features { feature_value_counts features_generating }
   }
 }`;
+
+export const TOKEN_PROJECT_LABELS_QUERY = `query ArtBlocksTokenProjectLabels($chain: Int!, $ids: [String!]!) {
+  tokens_metadata(where: {chain_id: {_eq: $chain}, id: {_in: $ids}}, limit: 100) {
+    id token_id project_id chain_id contract_address
+    project { id project_id chain_id contract_address name invocations opensea_slug ${PROJECT_LABEL_FIELDS} }
+  }
+}`;
+
+// Classification is metadata, never a scoring trait or an affiliation guess.
+export function artBlocksProjectLabels(project) {
+  const identity = projectIdentity(project.chain_id, project.contract_address, String(BigInt(project.project_id) * 1000000n));
+  const tagsKnown = Array.isArray(project.tags) && project.tags.every(t => typeof t?.tag_name === 'string');
+  const publicHeritageTag = t => t.tag?.name === t.tag_name && t.tag.status === 'public' && t.tag.grouping_name === 'heritage' && t.tag.type === 'project';
+  const publicTags = tagsKnown ? project.tags.filter(publicHeritageTag).map(t => t.tag_name) : [];
+  const abTag = tagsKnown ? project.tags.find(t => t.tag_name === 'ab500') : null;
+  const curatedTag = publicTags.find(t => /^curated series [1-9]\d*$/.test(t));
+  const vertical = typeof project.vertical_name === 'string' ? project.vertical_name : null;
+  const fallbackCategories = { curated: 'Curated', factory: 'Factory', playground: 'Playground', presents: 'Presents', explorations: 'Explorations', collaborations: 'Collaborations', studio: 'Studio', engine: 'Engine', flex: 'Flex', fullyonchain: 'Engine · Fully On Chain' };
+  let category = fallbackCategories[vertical] || (vertical !== 'unassigned' && project.vertical?.name === vertical && typeof project.vertical?.display_name === 'string' && project.vertical.display_name.trim()
+    ? project.vertical.display_name.trim() : null);
+  if (category && project.vertical?.category_name === 'collaborations' && category !== 'Collaborations') category = `Collaborations · ${category}`;
+  const series = curatedTag ? Number(curatedTag.slice('curated series '.length)) : vertical === 'curated' && Number.isSafeInteger(project.series_id) && project.series_id > 0 ? project.series_id : null;
+  const artist = typeof project.artist_name === 'string' && project.artist_name.trim() || [...new Set((Array.isArray(project.artist_profiles) ? project.artist_profiles : []).map(a => a?.display_name).filter(n => typeof n === 'string' && n.trim()))].join(', ') || null;
+  return { key: identity.key, id: identity.id, projectId: identity.projectId, chain: chains.get(project.chain_id).slug,
+    contract: project.contract_address.toLowerCase(), name: project.name || `Project ${identity.projectId}`, artist,
+    ab500: !tagsKnown ? null : abTag ? publicHeritageTag(abTag) ? true : null : false, category, series,
+    source: ARTBLOCKS_ENDPOINT, checkedAt: new Date().toISOString() };
+}
+
+export async function fetchArtBlocksProjectLabels(items, request, { signal, catalog: suppliedCatalog } = {}) {
+  const labels = new Map(), warnings = [], candidates = new Map();
+  for (const item of items) {
+    const chain = ARTBLOCKS_CHAINS.find(c => c.slug === item.chain)?.id;
+    const identity = projectIdentity(chain, item.contractAddress, item.tokenId);
+    if (!identity || item.demo) continue;
+    candidates.set(itemKey(item), { item, chain, identity, token: `${item.contractAddress.toLowerCase()}-${item.tokenId}` });
+  }
+  if (!candidates.size) return { labels, warnings };
+  try {
+    const catalog = suppliedCatalog || await fetchArtBlocksCatalog(request, { signal });
+    for (const chain of ARTBLOCKS_CHAINS) {
+      const group = [...candidates.values()].filter(c => c.chain === chain.id && catalog.contracts.has(contractKey(chain.id, c.item.contractAddress)));
+      for (let offset = 0; offset < group.length; offset += 100) {
+        signal?.throwIfAborted();
+        const batch = group.slice(offset, offset + 100), expected = new Map(batch.map(c => [c.token, c]));
+        const data = await request(TOKEN_PROJECT_LABELS_QUERY, { chain: chain.id, ids: [...expected.keys()] }, signal);
+        if (!Array.isArray(data.tokens_metadata)) throw new Error('Invalid Art Blocks labels response.');
+        const accepted = new Map(), seen = new Set();
+        for (const row of data.tokens_metadata) {
+          const candidate = expected.get(row.id);
+          if (!candidate || seen.has(row.id) || row.chain_id !== chain.id || row.contract_address !== candidate.item.contractAddress.toLowerCase() || String(row.token_id) !== String(candidate.item.tokenId) ||
+              row.project_id !== candidate.identity.id || !validProject(row.project, chain.id, candidate.identity, row.contract_address)) throw new Error('Art Blocks project labels returned an identity mismatch.');
+          seen.add(row.id); accepted.set(itemKey(candidate.item), artBlocksProjectLabels(row.project));
+        }
+        signal?.throwIfAborted();
+        for (const [key, value] of accepted) labels.set(key, value);
+        if (accepted.size < expected.size && !warnings.includes('Some indexed Art Blocks token identities were unavailable; their project classification remains unverified.')) warnings.push('Some indexed Art Blocks token identities were unavailable; their project classification remains unverified.');
+      }
+    }
+  } catch (e) {
+    signal?.throwIfAborted();
+    warnings.push('Some Art Blocks project labels could not be verified. Scores are unchanged; no AB500 or series classification was guessed.');
+  }
+  return { labels, warnings };
+}
 
 export function createArtBlocksClient({ fetchImpl = fetch, wait = abortableDelay, timeoutMs = 20000 } = {}) {
   return async function request(query, variables, signal) {
@@ -183,6 +253,7 @@ export function normalizeArtBlocksToken(token, project) {
     traits, traitsKnown: supported, metadataUnavailable: !supported, unsupportedFeatures,
     collectionSlug: identity.key, collectionName: project.name || `Project ${identity.projectId}`,
     artBlocksProjectId: identity.projectId, artBlocksVerified: true, chainId: token.chain_id,
+    artBlocksProject: artBlocksProjectLabels(project),
     marketplaceSlug: project.opensea_slug || null
   };
 }

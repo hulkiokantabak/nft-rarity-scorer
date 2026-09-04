@@ -1,4 +1,4 @@
-import { numberSetting, validateTiers } from './core.js?v=1.5.0';
+import { numberSetting, validateTiers } from './core.js?v=1.6.0';
 
 export function validateConfig(config) {
   if (!config || typeof config !== 'object' || Array.isArray(config) || ![1, 2].includes(config.v)) throw new Error('Unsupported config version. Expected v1 or v2.');
@@ -9,7 +9,9 @@ export function validateConfig(config) {
   const weights = new Map();
   if (config.trait_weights != null && (typeof config.trait_weights !== 'object' || Array.isArray(config.trait_weights))) throw new Error('Trait weights must be a name-to-number object.');
   for (const [type, value] of Object.entries(config.trait_weights || {})) weights.set(type, numberSetting(value, 1, 0, 10));
+  for (const key of ['portfolio_score_missing', 'portfolio_score_pairs']) if (config[key] != null && typeof config[key] !== 'boolean') throw new Error('Portfolio scoring options must be true or false.');
   return { ...config, mode: config.mode === 'all' ? 'all' : 'listed', tier_mode: custom ? 'custom' : 'standard', tiers, weights,
     score_missing: config.score_missing === true, score_pairs: config.score_pairs === true,
+    portfolio_score_missing: config.portfolio_score_missing !== false, portfolio_score_pairs: config.portfolio_score_pairs !== false,
     missing_bonus: numberSetting(config.missing_bonus, 1.5, 0, 10), combo_bonus: numberSetting(config.combo_bonus, 2, 0, 10) };
 }

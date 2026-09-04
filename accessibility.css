@@ -62,6 +62,13 @@ label { display: inline-flex; align-items: center; gap: 8px; }
 .portfolio-project-details:not([open]) > .portfolio-project-body { display: none; }
 .portfolio-project-table { overflow-x: auto; }
 .portfolio-project-body > .btn { margin-top: 12px; }
+.project-metadata, .project-identity { display: block; font-size: 0.875rem; font-weight: 400; line-height: 1.5; color: var(--text-muted); overflow-wrap: anywhere; }
+.project-metadata > span { display: block; }
+.project-label-name { font-weight: 600; color: var(--text); }
+.project-classification { color: var(--accent); }
+.project-metadata a { color: inherit; }
+.project-label-list { margin-block: 8px; font-size: 0.875rem; }
+.project-label-list .project-metadata { margin-top: 6px; }
 @media (max-width: 640px) {
   main { padding-inline: 8px; }
   .panel { padding: 14px 12px; }

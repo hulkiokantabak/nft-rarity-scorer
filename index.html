@@ -9,8 +9,8 @@
 <meta name="referrer" content="no-referrer">
 <meta property="og:title" content="NFT Rarity Scorer">
 <meta property="og:description" content="Transparent, browser-based NFT trait analysis. Custom scores, not valuations.">
-<link rel="stylesheet" href="./styles.css?v=1.5.0">
-<link rel="stylesheet" href="./accessibility.css?v=1.5.0">
+<link rel="stylesheet" href="./styles.css?v=1.6.0">
+<link rel="stylesheet" href="./accessibility.css?v=1.6.0">
 </head>
 <body>
 
@@ -176,8 +176,8 @@
     <button class="btn btn-secondary" id="portfolioBtn" onclick="analyzePortfolio()" style="padding:8px 16px;">Score Art Blocks Portfolio</button>
   </div>
   <p class="help-text">Art Blocks only, including verified Engine/Flex, Studio, Collaborations and legacy contracts. The official catalog is checked each run across Ethereum, Arbitrum, Base and Shape. Pieces are grouped and scored by individual project; unrelated NFTs are excluded. No top-25-project cutoff. Scans stop at 10,000 Art Blocks pieces with an explicit partial-scan notice.</p>
-  <p class="help-text">A wallet address works without an API key. It is sent to Art Blocks’ public data service to retrieve indexed holdings and features; your OpenSea key is never sent there. ENS/OpenSea username resolution still uses OpenSea. Held rarity automatically scans each entire project with both scoring options below enabled. Your tiers, weights and bonus multipliers apply; run Portfolio again after changing them.</p>
-  <div class="key-options"><label><input type="checkbox" id="portfolioScoreMissing" checked disabled> Score missing traits</label><label><input type="checkbox" id="portfolioScorePairs" checked disabled> Score trait combinations</label><span class="help-text">Always enabled for Portfolio</span></div>
+  <p class="help-text">A wallet address works without an API key. It is sent to Art Blocks’ public data service to retrieve indexed holdings and features; your OpenSea key is never sent there. ENS/OpenSea username resolution still uses OpenSea. Held rarity scans each entire project. Both options below start checked; change either to recalculate current Portfolio results. Your tiers, weights and bonus multipliers apply; run Portfolio again after changing them.</p>
+  <div class="key-options"><label><input type="checkbox" id="portfolioScoreMissing" checked onchange="changePortfolioScoring()"> Score missing traits</label><label><input type="checkbox" id="portfolioScorePairs" checked onchange="changePortfolioScoring()"> Score trait combinations</label></div>
   <label><input type="checkbox" id="portfolioOpenSea" checked> Include OpenSea ranks and percentages (requires your OpenSea key)</label>
 </div>
 </div>
@@ -214,6 +214,7 @@
   <img id="colImage" alt="" hidden>
   <div>
     <div class="col-name" id="colName"></div>
+    <div id="colProjects"></div>
     <div class="col-meta" id="colMeta"></div>
   </div>
 </div>
@@ -289,7 +290,7 @@
   <div style="font-size:0.75rem; color:var(--text-muted); margin-top:6px;" id="showMoreCount"></div>
 </div>
 
-<script type="module" src="./boot.js?v=1.5.0"></script>
+<script type="module" src="./boot.js?v=1.6.0"></script>
 
 </main>
 <noscript><p class="panel">JavaScript is needed for local scoring. Your API key is never required to read the project documentation.</p></noscript>
