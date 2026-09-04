@@ -1,9 +1,40 @@
 // Official Art Blocks inventory and project-scoped Portfolio data. Never send an
 // OpenSea key here, and never use names/slugs/prefixes as a contract allowlist.
-import { traitKey } from './core.js?v=1.4.0';
-import { abortableDelay, retryDelay } from './api.js?v=1.4.0';
+import { traitKey, countTraits, supplementTraitCounts, buildPairCounts, scoreNFT } from './core.js?v=1.5.0';
+import { abortableDelay, retryDelay } from './api.js?v=1.5.0';
 
 export const ARTBLOCKS_ENDPOINT = 'https://data.artblocks.io/v1/graphql';
+
+// The requested Portfolio policy always uses both bonuses and the whole project.
+// Bound quadratic pair work as well as token count, and yield between batches.
+export async function scoreArtBlocksPopulation(tokens, project, config, { signal, maxPairWork = 1000000 } = {}) {
+  const supply = Number(project.invocations), normalized = [];
+  let pairWork = 0;
+  for (let i = 0; i < tokens.length; i++) {
+    if (i % 100 === 0) { signal?.throwIfAborted(); await abortableDelay(0, signal); }
+    const item = normalizeArtBlocksToken(tokens[i], project);
+    const n = item.traits.filter(t => !t.type.startsWith('_')).length;
+    pairWork += n * (n - 1) / 2;
+    if (pairWork > maxPairWork) throw new Error('Held rarity unavailable: project exceeds the trait-combination safety limit.');
+    normalized.push(item);
+  }
+  const scanned = countTraits(normalized, supply), official = artBlocksTraitCounts(project);
+  if (!scanned._meta.complete || !official._meta.complete) {
+    throw new Error('Held rarity unavailable: complete supported project features are needed for missing-trait and combination scoring.');
+  }
+  const counts = supplementTraitCounts(official, scanned, supply), pairs = Object.create(null);
+  for (let i = 0; i < normalized.length; i += 100) {
+    await abortableDelay(0, signal); signal?.throwIfAborted();
+    for (const [key, n] of Object.entries(buildPairCounts(normalized.slice(i, i + 100)))) pairs[key] = (pairs[key] || 0) + n;
+  }
+  Object.defineProperty(pairs, '_meta', { value: { complete: true, population: supply } });
+  const effectiveConfig = { ...config, scoreMissing: true, scorePairs: true }, population = [];
+  for (let i = 0; i < normalized.length; i++) {
+    if (i % 100 === 0) { await abortableDelay(0, signal); signal?.throwIfAborted(); }
+    population.push(scoreNFT(normalized[i], counts, supply, effectiveConfig, pairs));
+  }
+  return { population, counts, pairs, config: effectiveConfig };
+}
 export const ARTBLOCKS_CHAINS = Object.freeze([
   { id: 1, name: 'Ethereum', slug: 'ethereum' },
   { id: 42161, name: 'Arbitrum', slug: 'arbitrum' },

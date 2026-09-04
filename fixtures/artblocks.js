@@ -50,3 +50,11 @@ export function makeFixture(options = {}) {
   };
   return { request, calls, projects, tokens, registry: contracts };
 }
+
+export function bonusFixture() {
+  const p = project(V1, 1, 1, { features: { features_generating: false, feature_value_counts: { A: { red: 50, blue: 50 }, B: { round: 50, square: 50 }, C: { true: 99 } } } });
+  const population = Array.from({ length: 100 }, (_, i) => token(p, i, { features: {
+    A: i < 50 ? 'red' : 'blue', B: i === 0 || (i >= 50 && i < 99) ? 'round' : 'square', ...(i ? { C: true } : {})
+  }, updated_at: '2026-09-04T00:00:00Z' }));
+  return { projects: [p], tokens: [population[0]], population };
+}

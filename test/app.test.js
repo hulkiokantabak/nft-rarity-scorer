@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { parseHTML } from 'linkedom';
-import { makeFixture, project as abProject, V1, FLEX, FAKE } from '../fixtures/artblocks.js';
+import { makeFixture, project as abProject, token as abToken, bonusFixture, V1, FLEX, FAKE } from '../fixtures/artblocks.js';
 
 const html = await readFile(new URL('../index.html', import.meta.url), 'utf8');
 const { window, document } = parseHTML(html);
@@ -70,6 +70,11 @@ const reset = () => {
 };
 
 test('initial markup wires every app event handler and labels fixed inputs', () => {
+  assert.equal(document.getElementById('walletInput').value, '0x694E64D4AD77e0C234b7b1c55AC40302aD86ce3F');
+  for (const id of ['portfolioScoreMissing', 'portfolioScorePairs']) {
+    assert.ok(document.getElementById(id).hasAttribute('checked'));
+    assert.ok(document.getElementById(id).disabled);
+  }
   for (const [, name] of html.matchAll(/on(?:click|change|input)="([\w]+)\(/g)) if (name !== 'document') assert.equal(typeof window[name], 'function', name);
   for (const el of document.querySelectorAll('input:not([type="checkbox"])')) {
     if (el.hidden || el.disabled) continue;
@@ -168,12 +173,12 @@ test('missing-data checkbox re-scores cached missing metadata on and off with cl
   assert.equal(missing().totalScore, 0);
 });
 
-test('Portfolio respects the missing-data opt-in without inventing measured coverage', async () => {
+test('Portfolio automatically obtains missing numeric frequencies and measured pair evidence', async () => {
   reset(); abOptions.unknownFrequency = true;
   input('walletInput', address); document.getElementById('scoreMissing').checked = true; await app.analyzePortfolio();
   assert.equal(app.getDisplayItems().length, 3);
-  assert.ok(app.getDisplayItems().every(i => i.assumedTraits === 1 && i.assumedPoints === 7));
-  assert.ok(app.getDisplayItems().every(i => i.coverage < 1));
+  assert.ok(app.getDisplayItems().every(i => i.assumedTraits === 0 && i.coverage === 1));
+  assert.ok(app.getDisplayItems().every(i => i.pairsAvailable && i.missingAvailable && i.totalScore === 21 && i.customProjectRank.total === 100));
 });
 test('comparison fallback scans the full population, not just listings', async () => {
   reset(); failTraits = true; input('compareSlugA', 'fixture-a'); input('compareSlugB', 'fixture-b'); await app.analyzeCompareTab();
@@ -198,6 +203,9 @@ test('address Portfolio needs no key, includes verified Engine and never fetches
   assert.match(document.getElementById('provenance').textContent, /grouped by chain, contract and project/);
   assert.equal(document.getElementById('statAvg').textContent, '—');
   assert.ok(items.every(i => i.scoreColor === 'var(--accent)'));
+  assert.equal(document.querySelectorAll('#resultsGrid .portfolio-project-details').length, 3);
+  assert.equal(document.querySelectorAll('#resultsGrid .item-card').length, 0);
+  app.selectPortfolioProject(items[0].collectionSlug);
   const links = [...document.querySelectorAll('#resultsGrid a[href*="/collection/"]')].map(a => a.getAttribute('href'));
   assert.ok(links.length > 0); assert.ok(links.every(href => /\/collection\/project-\d+$/.test(href)));
 });
@@ -246,43 +254,50 @@ test('Portfolio shows OpenSea percent from its ranking supply without replacing 
   const items = app.getDisplayItems(); assert.equal(items.length, 3);
   assert.ok(items.every(i => i.totalScore === 7 && i.totalSupply === 100 && i.traits[0].value === 'Gold'));
   assert.ok(items.every(i => i.openSeaRanking.total === 200 && i.openSeaRanking.topLow === 2 && i.rarityRank === 4));
+  app.selectPortfolioProject(items[0].collectionSlug);
   assert.match(document.getElementById('resultsGrid').textContent, /#4 \/ 200 · Top 2.00%/);
   assert.match(document.getElementById('portfolioSummary').textContent, /21Total held points/);
 });
 
 test('Portfolio project filter and global sorting preserve source ranks and expose project totals', async () => {
   reset(); input('apiKey', ''); input('walletInput', address); await app.analyzePortfolio();
-  const all = app.getDisplayItems(), first = all[0], oldRank = JSON.stringify(first.heldScoreRank);
+  const all = app.getDisplayItems(), first = all[0], oldRank = JSON.stringify(first.customProjectRank);
   app.selectPortfolioProject(first.collectionSlug);
-  assert.equal(app.getDisplayItems().length, 1); assert.equal(JSON.stringify(first.heldScoreRank), oldRank);
+  assert.equal(app.getDisplayItems().length, 1); assert.equal(JSON.stringify(first.customProjectRank), oldRank);
+  assert.equal(document.querySelectorAll('.portfolio-projects tbody tr').length, 1);
   assert.match(document.getElementById('portfolioVisibleSummary').textContent, /1 works · 7 total points/);
   app.setPortfolioGrouping('all');
   const values = [{ collectionSlug: 'a', totalScore: 1 }, { collectionSlug: 'b', totalScore: 20 }];
   assert.equal([...values].sort(app.makeSortFn('score', 'desc'))[0].totalScore, 20);
   window.clearFilters(); assert.equal(app.getDisplayItems().length, 3);
+  assert.equal(document.querySelectorAll('.portfolio-projects tbody tr').length, 3);
 });
 
-test('full-project rank button uses applied settings, retains ties, and supports granular selection', async () => {
-  reset(); input('apiKey', ''); input('walletInput', address); await app.analyzePortfolio();
+test('automatic full-project ranking and granular retry use applied settings and retain ties', async () => {
+  reset(); input('apiKey', ''); input('walletInput', address);
+  abOptions.fail = query => query.includes('ArtBlocksProjectPopulation'); await app.analyzePortfolio();
+  assert.ok(app.getDisplayItems().every(i => i.scoringMethod === 'Unscored' && !i.customProjectRank));
+  delete abOptions.fail;
   const first = app.getDisplayItems()[0]; app.selectPortfolioProject(first.collectionSlug);
   input('points1', '0'); // unapplied control edits must not change the result's rank config
   await app.calculatePortfolioRanks();
   assert.equal(document.getElementById('errorMsg').classList.contains('visible'), false, document.getElementById('errorMsg').textContent);
   assert.equal(first.totalScore, 7); assert.equal(first.customProjectRank.rank, 1);
   assert.equal(first.customProjectRank.total, 100); assert.equal(first.customProjectRank.topHigh, 1);
-  assert.match(document.getElementById('resultsGrid').textContent, /Custom project: #1 \/ 100 · Top 1.00%/);
+  assert.match(document.getElementById('resultsGrid').textContent, /Held rarity: #1 \/ 100 · Top 1.00%/);
   window.clearFilters(); assert.equal(app.getDisplayItems().filter(i => i.customProjectRank).length, 1);
   await app.calculatePortfolioRanks(); assert.equal(app.getDisplayItems().filter(i => i.customProjectRank).length, 3);
-  app.setView('table'); assert.match(document.getElementById('resultsTable').textContent, /Held within project/); app.setView('cards');
-  await app.analyzePortfolio(); assert.ok(app.getDisplayItems().every(i => !i.customProjectRank && i.totalScore === 0));
+  app.setView('table'); assert.match(document.getElementById('resultsTable').textContent, /Held rarity/); app.setView('cards');
+  await app.analyzePortfolio(); assert.ok(app.getDisplayItems().every(i => i.customProjectRank?.total === 100 && i.customProjectRank.rankEnd === 100 && i.totalScore === 0));
 });
 
 test('rank scan cancellation keeps scored holdings and exposes no incomplete project percentage', async () => {
-  reset(); input('apiKey', ''); input('walletInput', address); await app.analyzePortfolio();
+  reset(); input('apiKey', ''); input('walletInput', address);
   abOptions.fail = query => { if (query.includes('ArtBlocksProjectPopulation')) window.cancelAnalysis(); return false; };
-  await app.calculatePortfolioRanks();
+  await app.analyzePortfolio();
   assert.equal(app.getDisplayItems().length, 3); assert.ok(app.getDisplayItems().every(i => !i.customProjectRank));
-  assert.match(document.getElementById('errorMsg').textContent, /ranking cancelled/);
+  assert.match(document.getElementById('errorMsg').textContent, /scoring cancelled/);
+  assert.ok(app.getDisplayItems().every(i => i.scoringMethod === 'Unscored'));
   assert.equal(document.getElementById('portfolioRankBtn').disabled, false);
 });
 
@@ -291,8 +306,73 @@ test('Portfolio CSV exports independent populations, tie bounds, and project ide
   let exported; const original = URL.createObjectURL; URL.createObjectURL = blob => { exported = blob; return 'blob:test'; };
   try { window.exportCSV(); } finally { URL.createObjectURL = original; }
   const csv = await exported.text(); const rows = csv.split('\n').map(r => r.split(',')), headers = rows[0];
-  assert.match(csv, /Custom project tie end/); assert.match(csv, /OS rarity population/); assert.ok(!csv.includes('test-key-not-real'));
-  assert.equal(rows[1][headers.indexOf('OS rarity population')], '200'); assert.equal(rows[1][headers.indexOf('Custom project population')], '100');
+  assert.match(csv, /Held rarity tie end/); assert.match(csv, /OS rarity population/); assert.ok(!csv.includes('test-key-not-real'));
+  assert.equal(rows[1][headers.indexOf('OS rarity population')], '200'); assert.equal(rows[1][headers.indexOf('Held rarity project population')], '100');
+  assert.equal(rows[1][headers.indexOf('Missing traits enabled')], 'true'); assert.equal(rows[1][headers.indexOf('Trait combinations enabled')], 'true');
+  assert.doesNotMatch(csv, /Scored holdings population|Held score rank|Held project rank/);
+});
+
+test('automatic ranking cancellation retains completed projects and retry finishes only unavailable projects', async () => {
+  reset(); input('apiKey', ''); input('walletInput', address);
+  abOptions.fail = (query, variables) => { if (query.includes('ArtBlocksProjectPopulation') && variables.project === `${V1}-2`) window.cancelAnalysis(); return false; };
+  await app.analyzePortfolio();
+  const complete = app.getDisplayItems().filter(i => i.customProjectRank);
+  assert.equal(complete.length, 1); assert.equal(complete[0].totalScore, 7);
+  assert.equal(app.getDisplayItems().filter(i => i.scoringMethod === 'Unscored').length, 2);
+  delete abOptions.fail; await app.calculatePortfolioRanks();
+  assert.equal(app.getDisplayItems().filter(i => i.customProjectRank).length, 3);
+});
+
+test('over-limit projects keep OpenSea rarity but never expose partial Held scores', async () => {
+  reset(); osRanks = true; const projects = [abProject(V1, 1, 1, { invocations: 20001 })];
+  abFixture = makeFixture({ projects }); input('walletInput', address); await app.analyzePortfolio();
+  const [item] = app.getDisplayItems(); assert.equal(item.openSeaRanking.total, 200);
+  assert.equal(item.scoringMethod, 'Unscored'); assert.equal(item.customProjectRank, undefined);
+  assert.ok(!abFixture.calls.some(c => c.query.includes('ArtBlocksProjectPopulation')));
+  assert.match(document.querySelector('.portfolio-projects').textContent, /20,000-piece safety limit/);
+});
+
+test('Portfolio displays missing plus combination score and whole-project ranks, never owned-subset ranks', async () => {
+  reset(); const f = bonusFixture(); abFixture = makeFixture(f); osRanks = true; input('walletInput', address);
+  document.getElementById('scoreMissing').checked = false; document.getElementById('scorePairs').checked = false;
+  await app.analyzePortfolio();
+  const [item] = app.getDisplayItems();
+  assert.equal(item.totalScore, 25); assert.equal(item.mainTraits.find(t => t.isMissing).points, 11);
+  assert.equal(item.pairScores[0].points, 14); assert.equal(item.customProjectRank.rank, 1); assert.equal(item.customProjectRank.total, 100);
+  assert.equal(item.owner, address); assert.equal(item.image, 'https://example.com/piece.png'); assert.equal(item.openSeaRanking.total, 200);
+  assert.equal(item.heldScoreRank, undefined); assert.equal(item.heldProjectRank, undefined);
+  const summary = document.querySelector('.portfolio-projects table');
+  assert.deepEqual([...summary.querySelectorAll('thead th')].map(t => t.textContent), ['Project / work', 'OS rarity', 'Held rarity · whole project']);
+  assert.doesNotMatch(summary.textContent, /Total points|Assumed points|Average held|Ranks available/);
+  app.selectPortfolioProject(item.collectionSlug);
+  assert.match(document.getElementById('resultsGrid').textContent, /Rare Combinations/);
+  app.setView('table'); assert.match(document.getElementById('resultsTable').textContent, /Rare combinations/); app.setView('cards');
+});
+
+test('Portfolio collapse state and per-project pagination survive filters, sorting and view changes', async () => {
+  reset(); const projects = [abProject(V1, 1), abProject(FLEX, 1), abProject(FLEX, 1, 8453)];
+  const tokens = projects.flatMap((p, n) => Array.from({ length: n ? 2 : 60 }, (_, i) => abToken(p, i, { features: { Color: i ? 'Blue' : 'Gold' } })));
+  abFixture = makeFixture({ projects, tokens }); input('apiKey', ''); input('walletInput', address); await app.analyzePortfolio();
+  const detailFor = key => [...document.querySelectorAll('#resultsGrid .portfolio-project-details')].find(d => d.dataset.project === key);
+  assert.equal(document.querySelectorAll('#resultsGrid .portfolio-project-details').length, 3);
+  assert.equal(document.getElementById('showMoreWrap').style.display, 'none');
+  const keys = [...new Set(app.getDisplayItems().map(i => i.collectionSlug))];
+  for (const key of keys) {
+    const detail = detailFor(key); detail.setAttribute('open', ''); detail.dispatchEvent(new window.Event('toggle'));
+  }
+  assert.equal(document.querySelectorAll('#resultsGrid .item-card').length, 54);
+  window.showMoreProject(keys[0]); assert.equal(document.querySelectorAll('#resultsGrid .item-card').length, 64);
+  const last = detailFor(keys[2]); last.removeAttribute('open'); last.dispatchEvent(new window.Event('toggle'));
+  window.sortResults('customPercent'); assert.equal(detailFor(keys[2]).hasAttribute('open'), false);
+  input('filterSearch', 'Blue'); window.applyFilters(); window.clearFilters();
+  assert.equal(document.querySelectorAll('.portfolio-projects tbody tr').length, 64);
+  assert.ok(detailFor(keys[0]).hasAttribute('open')); assert.equal(detailFor(keys[2]).hasAttribute('open'), false);
+  app.setView('table');
+  const ids = [...document.querySelectorAll('.expand-row')].map(r => r.id);
+  assert.equal(new Set(ids).size, ids.length); assert.equal(ids.length, 62);
+  const button = document.querySelector('.row-toggle'); window.toggleTableRow(button.closest('tr')); assert.equal(button.getAttribute('aria-expanded'), 'true');
+  app.setView('cards'); assert.equal(document.querySelectorAll('#resultsGrid .item-card').length, 62);
+  app.selectPortfolioProject(keys[2]); assert.ok(detailFor(keys[2]).hasAttribute('open')); assert.equal(document.querySelectorAll('#resultsGrid .item-card').length, 2);
 });
 test('shared URL retains zeros and weights and excludes secrets', () => {
   reset(); input('points1', '0'); input('missingBonus', '0');

@@ -1,30 +1,25 @@
-# v1.4.0 Portfolio ranking and inspection handoff
+# v1.5.0 Portfolio whole-project scoring handoff
 
-## Delivered scope
+## Delivered behavior
 
-- Art Blocks-only holdings remain verified against the official live catalog, including legacy/Engine/Flex across four chains.
-- Optional OpenSea NFT rarity enrichment uses the user's existing OpenSea key, only for verified held tokens, without overwriting Art Blocks scores/traits/ownership/supply. Detailed collection metadata is fetched once per returned NFT.collection.
-- OpenSea Top % = supplied rank / matching collection.rarity.total_supply ×100. Exact collection identity, matching strategy/version, positive safe integers and rank <= max_rank <= rarity.total_supply are mandatory. Missing/inconsistent metadata leaves a raw rank without a percentage. Ranking timestamp is shown only with valid matching metadata.
-- Custom raw-score ranks among scored holdings overall and within each project. Full tie intervals, including all-zero ties; unscored is not zero.
-- On-demand full-project custom ranks, for selected or all held projects. Every project piece uses the same applied score config and official aggregate baseline. Exact minted identities, contiguous invocations, count/update stability, unchanged project frequencies, resolved population/held scores and matching scoring evidence are required.
-- Full-project ranks include labelled opt-in assumptions consistently. Missing-data behavior and 7/3/1 defaults are unchanged. Pair bonuses remain disabled in Portfolio.
-- Held point totals and project totals/averages, assumption subtotals, available-rank counts, project drill-down, grouped/all-holdings views and percent sorts. Raw point summaries are inventory descriptions, not cross-project rarity or valuation.
-- Cards/table show both systems independently. CSV includes project identities, cohort sizes, tie endpoints, percentages, assumptions, timestamps and rank config.
-- Full-project budgets: 20,000 pieces/project and 50,000/run. Existing holdings cap: 10,000. Completed project ranks survive cancellation. New Portfolio runs clear prior ranks; later control edits cannot silently relabel the applied config.
-- Existing design, static vanilla architecture, GitHub Pages hosting, visibility and storage retained. No runtime dependencies added. Assets/engine pinned together at 1.4.0.
+- C34's supplied public address is prefilled and editable. No wallet scan until Score is clicked.
+- Held rarity means the owned work's score rank within its entire minted Art Blocks project. Old wallet-relative ranks are removed from UI and CSV.
+- Automatic whole-project scans score all pieces and held works with missing traits and combinations enabled. Analyze/Compare checkbox defaults and existing tiers, weights and multipliers are preserved.
+- Official distributions stay stable; complete metadata supplies per-token presence, pair counts and wholly missing trait types. Unsupported/incomplete metadata cannot establish bonus completeness.
+- Rank evidence includes canonical pair identities/counts/points. Equal-frequency top-three pairs are independent of feature order. Owner, image and OpenSea metadata survive rescoring.
+- Failed/incomplete/capped projects leave the requested score and Held rarity unavailable; optional OS rarity remains. Retry targets a selected project or unfinished projects.
+- Summary columns: project/work identity, OS rarity, whole-project Held rarity. Rows follow filters; total/selected point sums elsewhere are inventory descriptions.
+- Detailed projects start collapsed, with persistent expansion and independent 50-work paging. Every matching header stays visible. Stable table expansion IDs distinguish contracts/chains.
+- Existing verified Art Blocks/Engine/Flex coverage, privacy, vanilla architecture and GitHub Pages hosting are unchanged.
+
+## Limits
+
+10,000 verified holdings; 20,000 pieces/project; 50,000 pieces/run; one million pair observations/project. Pair/scoring batches yield for cancellation. Completed project results survive cancellation. Stable signatures and exact full populations are required; live index scans are not atomic snapshots. OpenSea uses only its own matching strategy/version and rarity population.
 
 ## Validation
 
-103 deterministic/DOM integration tests passed locally; syntax checks passed. New tests cover tie math/zero/unscored/assumed cases, exact OpenSea collection/strategy populations, identity joins, key-free operation, isolated enrichment failures, full-project short pages/gaps/mutations/caps, held-vs-population scoring evidence, selected-project ranking, applied settings, totals/filter stability, cancellation and CSV.
+113 unit/DOM integration tests passed locally. Tests cover simultaneous missing-plus-pair points (25 = 11 measured-missing + 14 pair; rank 1/100 for one held piece), complete denominators, canonical pair order, unsupported data, cancellation, bounded work, applied config, C34 markup, project paging/collapse, synchronized filters, OS metadata and CSV.
 
-Live runtime-client check on 2026-09-04: all 40 minted Monochronos pieces scanned and scored with 100% measured coverage. Token 12: score 5, rank 1/40, Top 2.5%; token 7: score 4, tied rank 2–5/40, Top 5–12.5%. OpenSea integration uses current official schemas plus synthetic responses; no user's key extracted or used. No new browser UI QA/authenticated OpenSea test claimed.
+Live runtime-client check on 2026-09-04: all 40 Monochronos pieces scored with both bonuses available. Token 12: score 23 (18 pair points), rank 1/40, Top 2.5%; token 7: score 22 (18 pair points), rank 2–5/40, Top 5–12.5%. No user's key extracted or used; no new browser UI QA/authenticated OpenSea test claimed.
 
-Publish all runtime assets together to existing master-root GitHub Pages, including rankings.js. Site/publishing checks preserve existing hosting; no migration. Stop local preview after release.
-
-## Sources and deliberate limits
-
-See ARTBLOCKS_SCOPE.md for exact ranking formulas, privacy, source links, index boundaries and the complete 205-contract audit. OpenSea rank-position % is our explicit derivation, not a claim of matching an undocumented hover formula. OpenSea ties are not returned and are not invented.
-
-Live indexes may lag or change; consistency checks do not create an atomic historical snapshot. Full-project results can be unavailable for incomplete/changed/unresolved/over-limit populations; held scores remain useful. No broader NFT fetches, listing/price enrichment, pair recalculation, AI rarity, valuation model or backend was added.
-
-Earlier scoring-policy history remains in SCORING_REVIEW.md. Earlier Portfolio limits/policies are superseded by the current requested granular/ranking workflow.
+Publish all runtime assets together to existing master-root GitHub Pages at version 1.5.0. Stop preview after deployment. ARTBLOCKS_SCOPE.md records methodology/sources and the earlier contract audit; SCORING_REVIEW.md retains earlier scoring policy history.

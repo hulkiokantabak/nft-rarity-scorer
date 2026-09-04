@@ -1,4 +1,4 @@
-import { itemKey } from './core.js?v=1.4.0';
+import { itemKey } from './core.js?v=1.5.0';
 
 const positiveInteger = n => Number.isSafeInteger(n) && n > 0;
 export const hasScore = item => item.scoringMethod !== 'Unscored' && Number.isFinite(item.totalScore);
@@ -17,22 +17,6 @@ export function rankScores(items, scope) {
     start = end;
   }
   return result;
-}
-
-export function assignHeldRanks(items) {
-  const all = rankScores(items, 'Scored holdings (raw points)');
-  const groups = new Map();
-  for (const item of items) {
-    if (!groups.has(item.collectionSlug)) groups.set(item.collectionSlug, []);
-    groups.get(item.collectionSlug).push(item);
-  }
-  for (const group of groups.values()) {
-    const ranks = rankScores(group, 'Scored holdings in this project');
-    for (const item of group) {
-      item.heldScoreRank = all.get(itemKey(item)) || null;
-      item.heldProjectRank = ranks.get(itemKey(item)) || null;
-    }
-  }
 }
 
 // The denominator belongs to OpenSea's ranking strategy, not the Art Blocks
@@ -80,7 +64,8 @@ export function projectRanksForHoldings(held, population, expectedSupply) {
   const byId = new Map(population.map(i => [itemKey(i), i]));
   const cohort = held[0]?.collectionSlug;
   const evidence = i => JSON.stringify([i.totalScore, i.coverage, i.assumedTraits, i.assumedPoints,
-    [...i.mainTraits, ...i.specialTraits].map(t => [t.type, t.value, t.status, t.count, t.pct, t.points, t.isMissing]).sort((a, b) => JSON.stringify(a).localeCompare(JSON.stringify(b)))]);
+    [...i.mainTraits, ...i.specialTraits].map(t => [t.type, t.value, t.status, t.count, t.pct, t.points, t.isMissing]).sort((a, b) => JSON.stringify(a).localeCompare(JSON.stringify(b))),
+    i.pairsAvailable, (i.pairScores || []).map(p => [[[p.a.type, p.a.value], [p.b.type, p.b.value]].sort((a, b) => JSON.stringify(a).localeCompare(JSON.stringify(b))), p.count, p.pct, p.points]).sort((a, b) => JSON.stringify(a).localeCompare(JSON.stringify(b)))]);
   if (!cohort || population.some(i => i.collectionSlug !== cohort) || held.some(i => i.collectionSlug !== cohort || !byId.has(itemKey(i)) || evidence(byId.get(itemKey(i))) !== evidence(i))) {
     throw new Error('Project scores changed since the holdings scan. Run Portfolio again before calculating ranks.');
   }

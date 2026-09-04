@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { rankScores, assignHeldRanks, openSeaRanking, summarizeHoldings, summarizeProjects, projectRanksForHoldings, rankText } from '../rankings.js';
+import { rankScores, openSeaRanking, summarizeHoldings, summarizeProjects, projectRanksForHoldings, rankText } from '../rankings.js';
 import { itemKey, scoreNFT } from '../core.js';
 import { fetchOpenSeaRarities } from '../api.js';
 import { fetchArtBlocksProjectPopulation, normalizeArtBlocksToken, artBlocksTraitCounts } from '../artblocks.js';
@@ -21,15 +21,13 @@ test('competition ranks preserve ties, zero scores and complete tie intervals', 
   assert.equal(rankScores([item(1, 0)], 'held').get(itemKey(item(1, 0))).topLow, 100);
 });
 
-test('held ranks keep projects/chains separate and summary sums are additive', () => {
+test('project summary sums are additive without manufacturing holdings-relative ranks', () => {
   const rows = [item(1, 10), item(2, 5, { assumedPoints: 5 }), item(3, 40, { chain: 'base', collectionSlug: 'b', collectionName: 'B' }), item(4, 0, { scoringMethod: 'Unscored' })];
-  assignHeldRanks(rows);
-  assert.equal(rows[0].heldScoreRank.rank, 2); assert.equal(rows[0].heldProjectRank.rank, 1);
-  assert.equal(rows[2].heldProjectRank.total, 1); assert.equal(rows[3].heldScoreRank, null);
   const total = summarizeHoldings(rows), projects = summarizeProjects(rows);
   assert.equal(total.totalScore, 55); assert.equal(total.assumedPoints, 5); assert.equal(total.scored, 3);
   assert.equal(projects.reduce((n, p) => n + p.totalScore, 0), total.totalScore);
   assert.equal(projects[0].average, 7.5);
+  assert.ok(rows.every(i => !Object.hasOwn(i, 'heldScoreRank') && !Object.hasOwn(i, 'heldProjectRank')));
 });
 
 test('OpenSea percentage uses matching rarity population, never project/general supply', () => {
@@ -98,6 +96,8 @@ test('full rank refuses unresolved scores and changed held scores; assumptions a
   assert.throws(() => projectRanksForHoldings([{ ...a, totalScore: 8 }], [a, b], 2), /changed/);
   assert.throws(() => projectRanksForHoldings([{ ...b, scoringMethod: 'Unscored' }], [a, b], 2), /unresolved/);
   assert.throws(() => projectRanksForHoldings([{ ...a, mainTraits: [{ type: 'Color', value: 'Gold', status: 'assumed', points: 7 }] }], [a, b], 2), /changed/);
+  assert.throws(() => projectRanksForHoldings([{ ...a, pairsAvailable: true }], [a, b], 2), /changed/);
+  assert.throws(() => projectRanksForHoldings([{ ...a, pairScores: [{ a: { type: 'A', value: 'red' }, b: { type: 'B', value: 'round' }, count: 1, pct: '1.00', points: 14 }] }], [a, b], 2), /changed/);
   const result = projectRanksForHoldings([a], [a, { ...b, assumedTraits: 1 }], 2).get(itemKey(a));
   assert.equal(result.assumedPopulation, 1); assert.match(rankText(result), /includes assumptions/);
 });

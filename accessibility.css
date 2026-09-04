@@ -55,6 +55,13 @@ label { display: inline-flex; align-items: center; gap: 8px; }
 .portfolio-projects caption { text-align: left; font-weight: 600; margin: 10px 0; }
 .portfolio-projects small, .artwork-ranks small { display: block; color: var(--text-muted); font-size: 0.8rem; overflow-wrap: anywhere; }
 .artwork-ranks { line-height: 1.5; margin-block: 8px; min-width: 180px; overflow-wrap: anywhere; }
+.portfolio-project-details { grid-column: 1 / -1; min-width: 0; border: 1px solid var(--border); border-radius: 8px; margin-bottom: 12px; background: var(--card-bg); }
+.portfolio-project-details > summary { cursor: pointer; padding: 16px; font-weight: 600; overflow-wrap: anywhere; }
+.portfolio-project-details > summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.portfolio-project-body { padding: 0 12px 12px; }
+.portfolio-project-details:not([open]) > .portfolio-project-body { display: none; }
+.portfolio-project-table { overflow-x: auto; }
+.portfolio-project-body > .btn { margin-top: 12px; }
 @media (max-width: 640px) {
   main { padding-inline: 8px; }
   .panel { padding: 14px 12px; }

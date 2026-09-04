@@ -1,4 +1,4 @@
-import { itemKey, normalizeNFT } from './core.js?v=1.4.0';
+import { itemKey, normalizeNFT } from './core.js?v=1.5.0';
 
 export function abortableDelay(ms, signal) {
   return new Promise((resolve, reject) => {

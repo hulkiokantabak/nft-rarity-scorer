@@ -1,9 +1,10 @@
 // Deterministic, DOM-free scoring. This is a custom heuristic, not OpenRarity.
-export const ENGINE_VERSION = '1.4.0';
+export const ENGINE_VERSION = '1.5.0';
 export const traitKey = (type, value) => JSON.stringify([String(type), String(value)]);
 const pairKey = (a, b) => JSON.stringify([a, b].sort());
 const validCount = (n, supply) => Number.isInteger(n) && n > 0 && n <= supply;
 const uniqueTraits = traits => [...new Map((traits || []).map(t => [traitKey(t.type, t.value), t])).values()];
+const completeTraits = item => item.traitsKnown !== false && !item.metadataUnavailable && !item.unsupportedFeatures && !(item.traits || []).some(t => t.frequencyUnavailable);
 
 export function numberSetting(value, fallback, min = 0, max = 1000) {
   const n = value == null || String(value).trim() === '' ? fallback : Number(value);
@@ -52,13 +53,14 @@ export function countTraits(items, supply = items.length) {
   for (const item of unique) {
     const seenTypes = new Set();
     for (const t of uniqueTraits(item.traits)) {
+      if (t.frequencyUnavailable) continue;
       const key = traitKey(t.type, t.value);
       counts[key] = (counts[key] ?? 0) + 1;
       seenTypes.add(t.type);
     }
     for (const type of seenTypes) present[type] = (present[type] ?? 0) + 1;
   }
-  const complete = unique.length === supply && unique.every(i => i.traitsKnown !== false && !i.metadataUnavailable);
+  const complete = unique.length === supply && unique.every(completeTraits);
   return withMeta(counts, { source: 'Full NFT metadata scan', population: unique.length, complete, present });
 }
 
@@ -75,7 +77,7 @@ export function supplementTraitCounts(primary, scanned, supply) {
     counts[key] = count; supplemented = true;
   }
   return withMeta(counts, { ...primary._meta, population: supply, complete: true, present: scanned._meta.present,
-    source: supplemented ? 'OpenSea frequencies + full-scan additional trait types' : primary._meta.source,
+    source: supplemented ? `${primary._meta.source} + full-scan additional trait types` : primary._meta.source,
     presenceSource: 'Full NFT metadata scan' });
 }
 
@@ -109,14 +111,14 @@ export function buildPairCounts(items, supply = items.length) {
   const unique = [...new Map(items.map(i => [itemKey(i), i])).values()];
   const counts = Object.create(null);
   for (const item of unique) {
-    const traits = uniqueTraits(item.traits).filter(t => !t.type.startsWith('_'));
+    const traits = uniqueTraits(item.traits).filter(t => !t.frequencyUnavailable && !t.type.startsWith('_'));
     for (let i = 0; i < traits.length; i++) for (let j = i + 1; j < traits.length; j++) {
       if (traits[i].type === traits[j].type) continue;
       const k = pairKey(traitKey(traits[i].type, traits[i].value), traitKey(traits[j].type, traits[j].value));
       counts[k] = (counts[k] ?? 0) + 1;
     }
   }
-  return withMeta(counts, { population: unique.length, complete: unique.length === supply && unique.every(i => i.traitsKnown !== false && !i.metadataUnavailable) });
+  return withMeta(counts, { population: unique.length, complete: unique.length === supply && unique.every(completeTraits) });
 }
 
 export function classifyTrait(pct, tiers) {
@@ -161,7 +163,8 @@ export function scoreNFT(item, counts, supply, config, pairCounts) {
       const points = Math.round(pts * numberSetting(config.comboBonus, 2, 0, 10));
       if (points > 0) pairScores.push({ a, b, count, pct, tier, points });
     }
-    pairScores.sort((a, b) => a.pct - b.pct || traitKey(a.a.type, a.a.value).localeCompare(traitKey(b.a.type, b.a.value)));
+    const canonicalPair = p => pairKey(traitKey(p.a.type, p.a.value), traitKey(p.b.type, p.b.value));
+    pairScores.sort((a, b) => a.pct - b.pct || canonicalPair(a).localeCompare(canonicalPair(b)));
     pairScores = pairScores.slice(0, 3).map(p => ({ ...p, pct: p.pct.toFixed(2) }));
   }
   const tierCounts = Object.fromEntries(tiers.map(t => [t.name, 0]));
