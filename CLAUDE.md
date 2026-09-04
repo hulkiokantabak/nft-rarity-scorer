@@ -2,7 +2,7 @@
 
 ## Architecture
 Vanilla JavaScript static site, no production build and no browser runtime dependencies.
-Native modules: app.js, core.js, api.js, artblocks.js, config.js, storage.js.
+Native modules: app.js, core.js, api.js, artblocks.js, rankings.js, config.js, storage.js.
 HTML: index.html. Styles: styles.css + accessibility.css.
 Use an HTTP server, not file://, because native modules require it.
 
@@ -26,7 +26,9 @@ Node 22+; LinkeDOM is a dev-only dependency. Tests use synthetic data, never rea
 - NFT identity is chain + contract + token ID. Preserve non-EVM case.
 - Do not compare payment currencies without matching token identity.
 - Keep OpenSea rank distinct from custom tier points. Portfolio is Art Blocks-only, including verified Engine/Flex, on Ethereum/Arbitrum/Base/Shape. Verify the live official catalog and exact owner/chain/contract/project identity; never rely on names/slugs/prefixes or filter is_artblocks=true.
-- Portfolio frequencies use official project counts and minted invocations. Group by chain + contract + project, not shared core. No cross-project rank, color scale or average. No 25-project cap; report the 10,000 verified-piece cap and partial data.
+- Portfolio frequencies use official project counts and minted invocations. Default grouping is chain + contract + project, not shared core. The user requested raw-point held ranks/totals and project summaries: label these inventory statistics, never cross-project rarity. Keep neutral score colors. No 25-project cap; report the 10,000 verified-piece cap and partial data.
+- OpenSea Top % requires exact NFT/collection slug match, matching rarity strategy/version and 1 <= rank <= max_rank <= rarity.total_supply. Never substitute general/project/held supply. Copy only rank metadata, preserving Art Blocks traits/owner/supply/scores. No key means no OpenSea lookup, not a failed Portfolio.
+- Full-project custom ranks require every minted invocation, stable count/update signatures and project aggregates, resolved scores and matching held scoring evidence under the applied config. Preserve aggregate baseline and missing assumptions; ranking must not change scoring policy. Show tie intervals and assumption counts. Limits: 20k/project, 50k/run. Filters/sorts never recompute source ranks.
 - Wallet subsets/Art Blocks value aggregates do not establish per-token absence or pairs. Unsupported structured fields must not invalidate measured scalar siblings.
 - artblocks-contracts.json is an audit snapshot, not a fallback allowlist. Catalog failure must not widen scope. Read ARTBLOCKS_SCOPE.md before changing coverage.
 - API keys go only to the OpenSea origin; no redirects with credential headers. Art Blocks queries never take a key or send cookies; address-only Portfolio is key-free.

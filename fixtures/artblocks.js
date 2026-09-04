@@ -31,6 +31,12 @@ export function makeFixture(options = {}) {
     signal?.throwIfAborted(); calls.push({ query, variables });
     if (options.cancelOn && query.includes(options.cancelOn)) { options.controller.abort(); signal?.throwIfAborted(); }
     if (options.fail && options.fail(query, variables)) throw new Error('Synthetic API failure');
+    if (query.includes('ArtBlocksProjectPopulation')) {
+      const p = projects.find(p => p.chain_id === variables.chain && p.id === variables.project);
+      const population = options.population || Array.from({ length: p.invocations }, (_, i) => token(p, i, { features: { Color: i === 0 ? 'Gold' : 'Blue', ...(options.unknownFrequency ? { Level: 2 } : {}) }, updated_at: '2026-09-04T00:00:00Z' }));
+      return { tokens_metadata: population.filter(t => t.invocation > variables.after).slice(0, options.pageSize || 200),
+        tokens_metadata_aggregate: { aggregate: { count: population.length, max: { updated_at: options.updatedAt || '2026-09-04T00:00:00Z' } } } };
+    }
     if (query.includes('ArtBlocksContracts')) {
       const all = contracts.filter(c => c.chain_id === variables.chain).sort((a, b) => a.address.localeCompare(b.address));
       return { contracts_metadata: all.filter(c => c.address > variables.after).slice(0, options.pageSize || 200), contracts_metadata_aggregate: { aggregate: { count: all.length } } };

@@ -42,6 +42,19 @@ label { display: inline-flex; align-items: center; gap: 8px; }
 #snapshotList > div { flex-wrap: wrap; }
 .provenance { color: var(--text-muted); border-style: dashed; }
 .provenance strong { color: var(--text); }
+.portfolio-metrics { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; margin-top: 12px; }
+.portfolio-metrics > div { border: 1px solid var(--border); border-radius: 8px; padding: 12px; background: var(--bg); }
+.portfolio-metrics strong { display: block; font-size: 1.4rem; }
+.portfolio-metrics span, .artwork-ranks, .portfolio-projects { font-size: 0.875rem; }
+.portfolio-controls { display: flex; align-items: end; gap: 12px; flex-wrap: wrap; margin-top: 16px; }
+.portfolio-controls label { display: flex; align-items: start; flex-direction: column; max-width: 100%; }
+.portfolio-controls select { max-width: 100%; background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: 6px; }
+.portfolio-projects { overflow-x: auto; margin-top: 12px; }
+.portfolio-projects table { width: 100%; border-collapse: collapse; text-align: left; }
+.portfolio-projects th, .portfolio-projects td { padding: 10px; border-bottom: 1px solid var(--border); vertical-align: top; }
+.portfolio-projects caption { text-align: left; font-weight: 600; margin: 10px 0; }
+.portfolio-projects small, .artwork-ranks small { display: block; color: var(--text-muted); font-size: 0.8rem; overflow-wrap: anywhere; }
+.artwork-ranks { line-height: 1.5; margin-block: 8px; min-width: 180px; overflow-wrap: anywhere; }
 @media (max-width: 640px) {
   main { padding-inline: 8px; }
   .panel { padding: 14px 12px; }

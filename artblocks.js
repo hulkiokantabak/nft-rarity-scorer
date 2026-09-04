@@ -1,7 +1,7 @@
 // Official Art Blocks inventory and project-scoped Portfolio data. Never send an
 // OpenSea key here, and never use names/slugs/prefixes as a contract allowlist.
-import { traitKey } from './core.js?v=1.3.0';
-import { abortableDelay, retryDelay } from './api.js?v=1.3.0';
+import { traitKey } from './core.js?v=1.4.0';
+import { abortableDelay, retryDelay } from './api.js?v=1.4.0';
 
 export const ARTBLOCKS_ENDPOINT = 'https://data.artblocks.io/v1/graphql';
 export const ARTBLOCKS_CHAINS = Object.freeze([
@@ -220,4 +220,49 @@ export async function fetchArtBlocksPortfolio(owner, request, { signal, onProgre
     }
   }
   return { catalog, tokens: [...tokens.values()], projects, warnings: [...warnings], partial: partial || warnings.size > 0, rejected };
+}
+
+export const PROJECT_POPULATION_QUERY = `query ArtBlocksProjectPopulation($chain: Int!, $project: String!, $after: Int!) {
+  tokens_metadata(where: {chain_id: {_eq: $chain}, project_id: {_eq: $project}, invocation: {_gt: $after}}, order_by: {invocation: asc}, limit: 200) {
+    id token_id project_id chain_id contract_address invocation features updated_at
+  }
+  tokens_metadata_aggregate(where: {chain_id: {_eq: $chain}, project_id: {_eq: $project}}) { aggregate { count max { updated_at } } }
+}`;
+
+const scoringSignature = project => JSON.stringify([Number(project.invocations), project.features?.features_generating,
+  Object.entries(artBlocksTraitCounts(project)).sort(([a], [b]) => a.localeCompare(b))]);
+
+export async function fetchArtBlocksProjectPopulation(project, request, { signal, onProgress = () => {}, maxItems = 20000 } = {}) {
+  const supply = Number(project.invocations), chain = project.chain_id, address = project.contract_address;
+  const identity = projectIdentity(chain, address, String(BigInt(project.project_id) * 1000000n));
+  if (!identity || !validProject(project, chain, identity, address) || !Number.isSafeInteger(supply) || supply < 1) throw new Error('Invalid project population.');
+  if (supply > maxItems) throw new Error(`Project rank not calculated: ${supply} minted pieces exceeds the ${maxItems}-piece project limit.`);
+  const signature = scoringSignature(project);
+  const checkProject = async () => {
+    const data = await request(PROJECTS_QUERY, { chain, ids: [project.id] }, signal);
+    const fresh = data.projects_metadata?.[0];
+    if (data.projects_metadata?.length !== 1 || !validProject(fresh, chain, identity, address) || scoringSignature(fresh) !== signature) throw new Error('Project supply or feature frequencies changed. Run Portfolio again before calculating ranks.');
+  };
+  await checkProject();
+  const tokens = []; let after = -1, stamp;
+  while (true) {
+    signal?.throwIfAborted();
+    const data = await request(PROJECT_POPULATION_QUERY, { chain, project: project.id, after }, signal);
+    const aggregate = data.tokens_metadata_aggregate?.aggregate;
+    if (!Array.isArray(data.tokens_metadata) || aggregate?.count !== supply || typeof aggregate.max?.updated_at !== 'string') throw new Error('Project index is incomplete. Full-project percentage is unavailable.');
+    if (stamp != null && stamp !== aggregate.max.updated_at) throw new Error('Project token data changed during ranking. Retry the project scan.');
+    stamp = aggregate.max.updated_at;
+    if (!data.tokens_metadata.length) break;
+    for (const token of data.tokens_metadata) {
+      const tokenIdentity = projectIdentity(token.chain_id, token.contract_address, token.token_id);
+      if (token.chain_id !== chain || !tokenIdentity || tokenIdentity.key !== identity.key || token.project_id !== project.id ||
+          token.id !== `${address.toLowerCase()}-${token.token_id}` || !Number.isInteger(token.invocation) ||
+          token.invocation !== after + 1 || token.invocation >= supply || BigInt(token.token_id) % 1000000n !== BigInt(token.invocation)) throw new Error('Project population has a gap, duplicate or identity mismatch. No full-project rank was assigned.');
+      after = token.invocation; tokens.push(token);
+    }
+    onProgress(tokens.length, supply);
+  }
+  if (tokens.length !== supply) throw new Error('Project population was truncated. No full-project rank was assigned.');
+  await checkProject();
+  return { tokens, project, updatedAt: stamp, fetchedAt: new Date().toISOString() };
 }

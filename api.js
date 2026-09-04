@@ -1,4 +1,4 @@
-import { itemKey, normalizeNFT } from './core.js?v=1.3.0';
+import { itemKey, normalizeNFT } from './core.js?v=1.4.0';
 
 export function abortableDelay(ms, signal) {
   return new Promise((resolve, reject) => {
@@ -83,4 +83,44 @@ export async function fetchNFTBatches(items, request, key, signal, onProgress = 
     onProgress(result.length, items.length);
   }
   return result;
+}
+
+// Rank-only enrichment: never replace Art Blocks traits, supply, owner or score.
+export async function fetchOpenSeaRarities(items, request, key, signal, onProgress = () => {}) {
+  const records = new Map(), collections = new Map(), warnings = new Set(), groups = new Map();
+  for (const item of items) { if (!groups.has(item.chain)) groups.set(item.chain, []); groups.get(item.chain).push(item); }
+  let done = 0, stop = false;
+  for (const [chain, group] of groups) {
+    if (stop) break;
+    for (let start = 0; start < group.length; start += 20) {
+      signal?.throwIfAborted();
+      const batch = group.slice(start, start + 20), expected = new Set(batch.map(itemKey));
+      try {
+        const data = await request('/api/v2/nfts/batch', key, { signal, retries: 1,
+          body: { identifiers: batch.map(i => ({ chain, contract_address: i.contractAddress, token_id: i.tokenId })) } });
+        for (const nft of data.nfts || []) {
+          const id = itemKey({ chain, contractAddress: nft.contract, tokenId: nft.identifier });
+          if (expected.has(id)) records.set(id, { rarity: nft.rarity, slug: typeof nft.collection === 'string' ? nft.collection : null });
+        }
+      } catch (e) {
+        signal?.throwIfAborted();
+        warnings.add('Some OpenSea ranks could not be fetched. Art Blocks scores are retained.');
+        if ([401, 403, 429].includes(e.status)) { stop = true; break; }
+      }
+      done += batch.length; onProgress(done, items.length);
+    }
+  }
+  if (!stop) for (const slug of new Set([...records.values()].filter(r => Number.isSafeInteger(r.rarity?.rank) && r.rarity.rank > 0 && r.slug).map(r => r.slug))) {
+    signal?.throwIfAborted();
+    try {
+      const collection = await request(`/api/v2/collections/${encodeURIComponent(slug)}`, key, { signal, retries: 1 });
+      if (collection.collection !== slug) throw new Error('OpenSea collection identity mismatch.');
+      collections.set(slug, collection);
+    }
+    catch (e) {
+      signal?.throwIfAborted(); warnings.add('Some OpenSea ranking populations are unavailable; those ranks have no percentage.');
+      if ([401, 403, 429].includes(e.status)) break;
+    }
+  }
+  return { records, collections, warnings: [...warnings] };
 }

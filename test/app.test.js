@@ -17,6 +17,7 @@ window.location = location;
 let calls = [], failListings = false, omitted = false, failTraits = false, failCollection = false, cancelOwner = false, switchModeDuringFetch = false;
 let fullCorpus = false, failScan = false, numericTraits = false, omitDetailTraits = false;
 let abOptions = {}, abFixture = makeFixture(abOptions);
+let osRanks = false;
 const address = '0x' + '1'.repeat(40), contracts = ['0x' + 'a'.repeat(40), '0x' + 'b'.repeat(40)];
 const nft = (contract, id = '0') => ({ identifier: id, contract, collection: 'fixture', name: contract === contracts[0] ? 'Gold zero' : 'Blue zero', image_url: '', traits: [{ trait_type: 'Color', value: contract === contracts[0] ? 'Gold' : 'Blue' }, ...(numericTraits ? [{ trait_type: 'Level', value: contract === contracts[0] && id === '0' ? 2 : 1 }] : [])], owners: cancelOwner ? [{ address: '0x' + '3'.repeat(40) }] : [], rarity: { rank: contract === contracts[0] ? 1 : 90 }, opensea_url: `https://opensea.io/item/ethereum/${contract}/${id}` });
 const listing = (contract, value, currency = 'ETH') => ({ status: 'ACTIVE', chain: 'ethereum', asset: { contract, identifier: '0' }, price: { current: { value, decimals: 0, currency } } });
@@ -30,10 +31,12 @@ globalThis.fetch = async (url, options = {}) => {
     const ids = JSON.parse(options.body).identifiers;
     body = { nfts: ids.filter((_, i) => !omitted || i !== 0).map(i => nft(i.contract_address, i.token_id)).reverse() };
     if (omitDetailTraits) body.nfts.forEach(n => { delete n.traits; });
+    if (osRanks) body.nfts.forEach(n => { n.rarity = { rank: 4, strategy_id: 'openrarity', strategy_version: '1' }; n.collection = 'os-fixture'; n.traits = [{ trait_type: 'Color', value: 'Wrong-source' }]; });
   } else if (path.startsWith('/api/v2/collections/')) {
     if (failCollection) return new Response('{}', { status: 404 });
     if (switchModeDuringFetch) window.setMode('all');
     body = { name: 'Fixture', total_supply: failTraits ? 2 : 100, contracts: contracts.map(address => ({ address, chain: 'ethereum' })) };
+    if (osRanks) { body.collection = decodeURIComponent(path.split('/').at(-1)); body.rarity = { total_supply: 200, max_rank: 199, strategy_id: 'openrarity', strategy_version: '1', calculated_at: '2026-09-04' }; }
   }
   else if (path.startsWith('/api/v2/traits/')) {
     if (failTraits) return new Response('{}', { status: 404 });
@@ -60,8 +63,10 @@ const reset = () => {
   calls = []; failListings = false; omitted = false; failTraits = false; failCollection = false; cancelOwner = false; switchModeDuringFetch = false;
   fullCorpus = false; failScan = false; numericTraits = false; omitDetailTraits = false;
   abOptions = {}; abFixture = makeFixture(abOptions);
+  osRanks = false;
   app.applyImportedConfig({ v: 2, slug: 'fixture', mode: 'listed', standard_tiers: { thresholds: [2, 5, 20], points: [7, 3, 1] }, score_missing: false, score_pairs: false });
   input('apiKey', 'test-key-not-real');
+  document.getElementById('portfolioOpenSea').checked = true;
 };
 
 test('initial markup wires every app event handler and labels fixed inputs', () => {
@@ -234,6 +239,60 @@ test('config import is atomic; zero weights reset when absent', () => {
   const before = app.buildConfigJSON();
   assert.throws(() => app.applyImportedConfig({ ...config, slug: 'bad', combo_bonus: 99 }));
   assert.equal(app.buildConfigJSON().slug, before.slug);
+});
+
+test('Portfolio shows OpenSea percent from its ranking supply without replacing Art Blocks traits', async () => {
+  reset(); osRanks = true; input('walletInput', address); await app.analyzePortfolio();
+  const items = app.getDisplayItems(); assert.equal(items.length, 3);
+  assert.ok(items.every(i => i.totalScore === 7 && i.totalSupply === 100 && i.traits[0].value === 'Gold'));
+  assert.ok(items.every(i => i.openSeaRanking.total === 200 && i.openSeaRanking.topLow === 2 && i.rarityRank === 4));
+  assert.match(document.getElementById('resultsGrid').textContent, /#4 \/ 200 · Top 2.00%/);
+  assert.match(document.getElementById('portfolioSummary').textContent, /21Total held points/);
+});
+
+test('Portfolio project filter and global sorting preserve source ranks and expose project totals', async () => {
+  reset(); input('apiKey', ''); input('walletInput', address); await app.analyzePortfolio();
+  const all = app.getDisplayItems(), first = all[0], oldRank = JSON.stringify(first.heldScoreRank);
+  app.selectPortfolioProject(first.collectionSlug);
+  assert.equal(app.getDisplayItems().length, 1); assert.equal(JSON.stringify(first.heldScoreRank), oldRank);
+  assert.match(document.getElementById('portfolioVisibleSummary').textContent, /1 works · 7 total points/);
+  app.setPortfolioGrouping('all');
+  const values = [{ collectionSlug: 'a', totalScore: 1 }, { collectionSlug: 'b', totalScore: 20 }];
+  assert.equal([...values].sort(app.makeSortFn('score', 'desc'))[0].totalScore, 20);
+  window.clearFilters(); assert.equal(app.getDisplayItems().length, 3);
+});
+
+test('full-project rank button uses applied settings, retains ties, and supports granular selection', async () => {
+  reset(); input('apiKey', ''); input('walletInput', address); await app.analyzePortfolio();
+  const first = app.getDisplayItems()[0]; app.selectPortfolioProject(first.collectionSlug);
+  input('points1', '0'); // unapplied control edits must not change the result's rank config
+  await app.calculatePortfolioRanks();
+  assert.equal(document.getElementById('errorMsg').classList.contains('visible'), false, document.getElementById('errorMsg').textContent);
+  assert.equal(first.totalScore, 7); assert.equal(first.customProjectRank.rank, 1);
+  assert.equal(first.customProjectRank.total, 100); assert.equal(first.customProjectRank.topHigh, 1);
+  assert.match(document.getElementById('resultsGrid').textContent, /Custom project: #1 \/ 100 · Top 1.00%/);
+  window.clearFilters(); assert.equal(app.getDisplayItems().filter(i => i.customProjectRank).length, 1);
+  await app.calculatePortfolioRanks(); assert.equal(app.getDisplayItems().filter(i => i.customProjectRank).length, 3);
+  app.setView('table'); assert.match(document.getElementById('resultsTable').textContent, /Held within project/); app.setView('cards');
+  await app.analyzePortfolio(); assert.ok(app.getDisplayItems().every(i => !i.customProjectRank && i.totalScore === 0));
+});
+
+test('rank scan cancellation keeps scored holdings and exposes no incomplete project percentage', async () => {
+  reset(); input('apiKey', ''); input('walletInput', address); await app.analyzePortfolio();
+  abOptions.fail = query => { if (query.includes('ArtBlocksProjectPopulation')) window.cancelAnalysis(); return false; };
+  await app.calculatePortfolioRanks();
+  assert.equal(app.getDisplayItems().length, 3); assert.ok(app.getDisplayItems().every(i => !i.customProjectRank));
+  assert.match(document.getElementById('errorMsg').textContent, /ranking cancelled/);
+  assert.equal(document.getElementById('portfolioRankBtn').disabled, false);
+});
+
+test('Portfolio CSV exports independent populations, tie bounds, and project identity', async () => {
+  reset(); osRanks = true; input('walletInput', address); await app.analyzePortfolio(); await app.calculatePortfolioRanks();
+  let exported; const original = URL.createObjectURL; URL.createObjectURL = blob => { exported = blob; return 'blob:test'; };
+  try { window.exportCSV(); } finally { URL.createObjectURL = original; }
+  const csv = await exported.text(); const rows = csv.split('\n').map(r => r.split(',')), headers = rows[0];
+  assert.match(csv, /Custom project tie end/); assert.match(csv, /OS rarity population/); assert.ok(!csv.includes('test-key-not-real'));
+  assert.equal(rows[1][headers.indexOf('OS rarity population')], '200'); assert.equal(rows[1][headers.indexOf('Custom project population')], '100');
 });
 test('shared URL retains zeros and weights and excludes secrets', () => {
   reset(); input('points1', '0'); input('missingBonus', '0');

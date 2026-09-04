@@ -9,8 +9,8 @@
 <meta name="referrer" content="no-referrer">
 <meta property="og:title" content="NFT Rarity Scorer">
 <meta property="og:description" content="Transparent, browser-based NFT trait analysis. Custom scores, not valuations.">
-<link rel="stylesheet" href="./styles.css?v=1.3.0">
-<link rel="stylesheet" href="./accessibility.css?v=1.3.0">
+<link rel="stylesheet" href="./styles.css?v=1.4.0">
+<link rel="stylesheet" href="./accessibility.css?v=1.4.0">
 </head>
 <body>
 
@@ -176,6 +176,7 @@
   </div>
   <p class="help-text">Art Blocks only, including verified Engine/Flex, Studio, Collaborations and legacy contracts. The official catalog is checked each run across Ethereum, Arbitrum, Base and Shape. Pieces are grouped and scored by individual project; unrelated NFTs are excluded. No top-25-project cutoff. Scans stop at 10,000 Art Blocks pieces with an explicit partial-scan notice.</p>
   <p class="help-text">A wallet address works without an API key. It is sent to Art Blocks’ public data service to retrieve indexed holdings and features; your OpenSea key is never sent there. ENS/OpenSea username resolution still uses OpenSea. Your scoring tiers and missing-data checkbox apply. Pair bonuses are unavailable without a full project scan. Run Portfolio again after changing scoring settings.</p>
+  <label><input type="checkbox" id="portfolioOpenSea" checked> Include OpenSea ranks and percentages (requires your OpenSea key)</label>
 </div>
 </div>
 <!-- /Portfolio tab -->
@@ -234,6 +235,8 @@
     <button class="sort-btn" data-sort="value" onclick="sortResults('value')">Value</button>
     <button class="sort-btn" data-sort="price" onclick="sortResults('price')">Price</button>
     <button class="sort-btn" data-sort="rarity" onclick="sortResults('rarity')">OS Rarity</button>
+    <button class="sort-btn" data-sort="osPercent" onclick="sortResults('osPercent')">OpenSea Top %</button>
+    <button class="sort-btn" data-sort="customPercent" onclick="sortResults('customPercent')">Custom project Top %</button>
     <button class="sort-btn" data-sort="owner" onclick="sortResults('owner')">Owner</button>
     <button class="sort-btn" aria-label="Reverse sort direction" data-sort="toggle" onclick="toggleSortDir()">&#8597;</button>
     <div class="view-toggle">
@@ -284,7 +287,7 @@
   <div style="font-size:0.75rem; color:var(--text-muted); margin-top:6px;" id="showMoreCount"></div>
 </div>
 
-<script type="module" src="./boot.js?v=1.3.0"></script>
+<script type="module" src="./boot.js?v=1.4.0"></script>
 
 </main>
 <noscript><p class="panel">JavaScript is needed for local scoring. Your API key is never required to read the project documentation.</p></noscript>

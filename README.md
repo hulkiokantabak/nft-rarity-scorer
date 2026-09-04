@@ -25,6 +25,9 @@ Open the local address printed by the server. Native JavaScript modules require 
 - Re-score cached data with current thresholds, points, bonuses, and trait weights.
 - Compare two collections descriptively under the same rules.
 - Art Blocks-only Portfolio includes verified Engine/Flex on Ethereum, Arbitrum, Base and Shape. Wallet addresses work without an API key. The live official catalog is checked on every scan; no 25-project cutoff. See [coverage and all identified contracts](ARTBLOCKS_SCOPE.md).
+- Portfolio shows total held points and project totals/averages. Use the project selector or “All holdings together” to inspect works; ranks stay tied to their original populations when filtering.
+- Include OpenSea ranks with your key. Its Top % uses matching collection rarity metadata, never Art Blocks project supply. Unavailable metadata stays visibly unavailable.
+- “Calculate custom project ranks” scores each whole project with the applied settings, without an API key. Ties get rank/percentage ranges. Select a project first for a focused scan, or calculate across all held projects (20,000 pieces/project; 50,000/run).
 - Export filtered results as CSV, export/import configuration JSON, or share a configuration URL. Keys never appear in exports or links.
 
 ## What the score means
@@ -46,7 +49,7 @@ Unchecked: absent traits and unavailable frequencies receive no points. Toggling
 
 Missing-frequency measurement, numeric restoration and pair scoring can require a full scan, including in Listed/Compare. Optional scan failure preserves available base scores. Pair bonuses still require a complete collection population. At most three rarest eligible cross-type pairs contribute using their own multiplier (default 2), independent of positive single-trait weights. A zero trait weight disables its pairs. Special traits do not receive missing/pair bonuses. Portfolio omits pair bonuses.
 
-Scores depend on each collection's trait structure. Portfolio uses each Art Blocks project's minted supply and official exact feature frequencies, grouping by chain + contract + project ID. It never treats a shared core as one collection, combines unrelated scores into an average, or applies cross-project score colors. OpenSea ranks remain separate metadata and are never converted to fallback trait points. Re-run Portfolio after changing settings; cached re-scoring is available for Analyze.
+Scores depend on each collection's trait structure. Portfolio uses each Art Blocks project's minted supply and official exact feature frequencies, grouping by chain + contract + project ID. It never treats a shared core as one collection. Requested total held points and raw-point holding ranks are inventory summaries, not cross-project rarity. Project totals/averages exclude unscored works and identify included assumed points. OpenSea ranks remain separate and never become fallback custom points. Re-run Portfolio after changing settings; cached re-scoring is available for Analyze. Full-project custom ranks use the same baseline/config for every piece, require complete stable data and display tie ranges; they are not inferred from wallet samples.
 
 “High score / lower price” requires a top-quartile custom score and a lower-half price among at least three fully covered, priced NFTs in the same fetched collection, chain, and payment currency. It is a sample heuristic, not evidence of underpricing. No exchange rates are assumed. Ambiguous multi-currency NFTs, unsupported bundle/quantity listings, and unidentified payment-token comparisons are excluded from price comparisons.
 
@@ -67,6 +70,7 @@ Snapshots record engine version, configuration fingerprint, frequency source, su
 - core.js — deterministic scoring, identity, prices, and metrics
 - api.js — queued requests, retries, pagination, metadata batches
 - artblocks.js — official live catalog, verified wallet holdings, project-scoped features
+- rankings.js — tie-aware ranks, validated OpenSea rarity populations, additive holding/project summaries
 - ARTBLOCKS_SCOPE.md, artblocks-contracts.json — coverage policy and full dated contract audit
 - config.js, storage.js — validated settings and key storage
 - test/, fixtures/ — unit and DOM integration tests with synthetic OpenSea/Art Blocks fixtures
@@ -81,6 +85,6 @@ Repository visibility, licensing, and hosting have not been changed by this upgr
 
 ## Verification limits
 
-The regression suite uses synthetic fixtures and a non-browser DOM. Release 1.3.0 adds verified Art Blocks identity, four-chain/project isolation, key-free Portfolio, pagination, scope rejection and missing-data tests, preserving the 1.2.0 original-scoring corrections. Live checks confirmed all 205 catalog contracts, actual project/token feature shapes and Art Blocks CORS headers for the deployed origin. Release 1.1.1 received real-browser startup/theme/tab/responsive checks; this release does not claim a new authenticated browser scoring run. Authenticated OpenSea availability still requires a real-key smoke test; no real key is present in the repository or fixtures.
+The regression suite uses synthetic fixtures and a non-browser DOM. Release 1.4.0 adds tie-aware ranks, independent OpenSea populations, full-project completeness/change guards, filters, totals, rank-only enrichment, cancellation and CSV tests. Live custom-ranking verification scanned all 40 Monochronos pieces: token12 scored5/rank1/Top2.5%, token7 scored4/rank2–5/Top5–12.5%. Earlier checks confirmed all 205 catalog cores and Art Blocks CORS. Existing scoring/startup/privacy regressions remain covered. This is not a new authenticated browser/OpenSea validation; no real key is present in the repository or fixtures.
 
 See [Scoring review](SCORING_REVIEW.md) for the before/after analysis and deliberate policy choices.
